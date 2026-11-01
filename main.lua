@@ -28,14 +28,14 @@ showLoading(checks, function()
     WindUI:AddTheme(MakeArceusTheme(WindUI))
     WindUI:SetTheme("ArceusX")
 
-    -- 6. Create the Window (Turned Acrylic OFF to stop mobile lag/shaking)
+    -- 6. Create the Window (Acrylic OFF to stop mobile lag/shaking)
     local Window = WindUI:CreateWindow({
         Title    = "AX",
         Author   = "Arceus X",
         Folder   = "AX",
         Size     = UDim2.fromOffset(580, 460),
         Theme    = "ArceusX",
-        Acrylic  = false, -- Changed to false. Acrylic causes massive FPS drops on mobile.
+        Acrylic  = false, 
         Resizable = true,
         Topbar = { Height = 52, ButtonsType = "Default" },
         User = { Enabled = true },
@@ -46,14 +46,34 @@ showLoading(checks, function()
         Icon = "rbxassetid://7770167407", 
     })
 
-    -- 7. Set up the Tabs
+    -- 7. UI Visibility Logic (Reused by float button and keybind)
+    local mainGuiVisible = true
+    local floatGui -- Forward declaration
+
+    local function SetUIVisibility(state)
+        mainGuiVisible = state
+        
+        -- Toggle the main window
+        for _, v in pairs((gethui and gethui() or LP:WaitForChild("PlayerGui")):GetChildren()) do
+            if v:IsA("ScreenGui") and v.Name ~= "AX_Floating" and v.Name ~= "AX_Loading" then
+                v.Enabled = mainGuiVisible
+            end
+        end
+        
+        -- Toggle the floating minimize button and stats box
+        if floatGui then
+            floatGui.Enabled = not mainGuiVisible
+        end
+    end
+
+    -- 8. Set up the Tabs
     local HomeTab = Window:Tab({ Title = "Home", Icon = "house" })
     local SettingsTab = Window:Tab({ Title = "Settings", Icon = "settings" })
 
     HomeTab:Section({ Title = "Welcome", Opened = true })
     HomeTab:Paragraph({
         Title = "Arceus X",
-        Desc = "UI loaded successfully. Click the floating X icon to minimize/restore the menu.",
+        Desc = "UI loaded successfully. Use the keybind or the floating X to minimize/restore.",
         Image = "sparkles",
         ImageSize = 18,
     })
@@ -74,12 +94,22 @@ showLoading(checks, function()
         Step = 0.05,
         Callback = function(val) Window:SetUIScale(val) end,
     })
+    
+    -- Custom Keybind Toggle
+    SettingsTab:Keybind({
+        Title = "Toggle UI Keybind",
+        Desc = "Press any key to toggle the main UI. Toggle the switch to enable/disable.",
+        Value = "RightShift", 
+        Callback = function()
+            SetUIVisibility(not mainGuiVisible)
+        end
+    })
 
     -- Settings Tab: Stability
     SettingsTab:Section({ Title = "Performance & Stability", Opened = true })
     SettingsTab:Toggle({
         Title = "Fix Game Shake (Physics)",
-        Desc = "If your character still shakes, toggle this. It locks your humanoid state to keep you grounded.",
+        Desc = "If your character still shakes, toggle this. It briefly anchors you to stop physics jitter.",
         Value = false,
         Callback = function(state)
             if state then
@@ -88,7 +118,6 @@ showLoading(checks, function()
                         if LP.Character then
                             local hrp = LP.Character:FindFirstChild("HumanoidRootPart")
                             if hrp then
-                                -- Anchoring the HRP briefly can stop the physics jitter without breaking the game
                                 hrp.Anchored = true 
                                 task.wait(0.05)
                                 hrp.Anchored = false
@@ -177,9 +206,10 @@ showLoading(checks, function()
     })
 
     -- 9. Minimize Button & Ping/FPS Stats Box
-    local floatGui = Instance.new("ScreenGui")
+    floatGui = Instance.new("ScreenGui")
     floatGui.Name = "AX_Floating"
     floatGui.ResetOnSpawn = false
+    floatGui.Enabled = false -- Start hidden because the main UI is currently open
     floatGui.Parent = (gethui and gethui()) or LP:WaitForChild("PlayerGui")
 
     local floatBtn = Instance.new("ImageButton")
@@ -254,23 +284,15 @@ showLoading(checks, function()
         end
     end)
 
-    -- Toggle Window Visibility on Click
-    local mainGuiVisible = true
+    -- Click Float Button to Restore UI
     local lastClick = 0
     floatBtn.MouseButton1Click:Connect(function()
         if tick() - lastClick < 0.2 then return end
         lastClick = tick()
-        
-        mainGuiVisible = not mainGuiVisible
-        
-        for _, v in pairs((gethui and gethui() or LP:WaitForChild("PlayerGui")):GetChildren()) do
-            if v:IsA("ScreenGui") and v.Name ~= "AX_Floating" and v.Name ~= "AX_Loading" then
-                v.Enabled = mainGuiVisible
-            end
-        end
+        SetUIVisibility(true) -- Forces the main UI to show up and the float to hide
     end)
 
-    -- Loop to update Ping and FPS (Changed to task.wait so it doesn't destroy your FPS)
+    -- Loop to update Ping and FPS (Optimized for 1-second updates)
     task.spawn(function()
         local frameCount = 0
         local lastTime = tick()
