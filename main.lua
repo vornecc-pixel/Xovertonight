@@ -2,7 +2,6 @@
 local repoBase = "https://raw.githubusercontent.com/vornecc-pixel/Xovertonight/main/"
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
 local LP = Players.LocalPlayer
 
 -- 1. Load Splash first
@@ -28,7 +27,7 @@ showLoading(checks, function()
     WindUI:AddTheme(MakeArceusTheme(WindUI))
     WindUI:SetTheme("ArceusX")
 
-    -- 6. Create the Window
+    -- 6. Create the Window (Acrylic OFF to stop mobile lag/shaking)
     local Window = WindUI:CreateWindow({
         Title    = "AX",
         Author   = "Arceus X",
@@ -41,30 +40,20 @@ showLoading(checks, function()
         User = { Enabled = true },
         OpenButton = { 
             Title = "AX", 
-            Enabled = false, -- Disabled in favor of the custom floating one
+            Enabled = true, -- Re-enabled WindUI's native OpenButton
+            Icon = "rbxassetid://7770167407"
         },
         Icon = "rbxassetid://7770167407", 
     })
 
-    -- 7. Locate WindUI's main ScreenGui safely
-    local windGui = (gethui and gethui() or LP:WaitForChild("PlayerGui")):FindFirstChild("WindUI")
-    if not windGui then
-        for _, v in pairs((gethui and gethui() or LP:WaitForChild("PlayerGui")):GetChildren()) do
-            if v:IsA("ScreenGui") and v.Name ~= "AX_Floating" and v.Name ~= "AX_Loading" then
-                windGui = v
-                break
-            end
-        end
-    end
-
-    -- 8. Set up the Tabs
+    -- 7. Set up the Tabs
     local HomeTab = Window:Tab({ Title = "Home", Icon = "house" })
     local SettingsTab = Window:Tab({ Title = "Settings", Icon = "settings" })
 
     HomeTab:Section({ Title = "Welcome", Opened = true })
     HomeTab:Paragraph({
         Title = "Arceus X",
-        Desc = "UI loaded successfully. Use the keybind or the floating X to minimize/restore.",
+        Desc = "UI loaded successfully. Use the keybind to toggle the menu.",
         Image = "sparkles",
         ImageSize = 18,
     })
@@ -86,14 +75,18 @@ showLoading(checks, function()
         Callback = function(val) Window:SetUIScale(val) end,
     })
     
-    -- Custom Keybind Toggle
+    -- Custom Keybind Toggle (Now perfectly syncs with the UI)
+    local isOpen = true
     SettingsTab:Keybind({
         Title = "Toggle UI Keybind",
-        Desc = "Press any key to toggle the main UI.",
+        Desc = "Press any key to toggle the whole UI.",
         Value = "RightShift", 
         Callback = function()
-            if windGui then
-                windGui.Enabled = not windGui.Enabled
+            isOpen = not isOpen
+            if isOpen then
+                Window:Open()
+            else
+                Window:Close()
             end
         end
     })
@@ -102,7 +95,7 @@ showLoading(checks, function()
     SettingsTab:Section({ Title = "Performance & Stability", Opened = true })
     SettingsTab:Toggle({
         Title = "Fix Game Shake (Physics)",
-        Desc = "If your character shakes, toggle this. It briefly anchors you to stop physics jitter.",
+        Desc = "If your character still shakes, toggle this. It briefly anchors you to stop physics jitter.",
         Value = false,
         Callback = function(state)
             if state then
@@ -188,130 +181,12 @@ showLoading(checks, function()
         Title = "Unload Everything",
         Desc = "Completely removes the UI and stops all scripts.",
         Callback = function()
-            if floatGui then floatGui:Destroy() end
             if Window then Window:Destroy() end
             for _, v in pairs((gethui and gethui() or LP:WaitForChild("PlayerGui")):GetChildren()) do
-                if v:IsA("ScreenGui") and v.Name ~= "AX_Floating" and v.Name ~= "AX_Loading" then
+                if v:IsA("ScreenGui") and v.Name ~= "AX_Loading" then
                     v:Destroy()
                 end
             end
         end
     })
-
-    -- 9. Minimize Button & Ping/FPS Stats Box
-    local floatGui = Instance.new("ScreenGui")
-    floatGui.Name = "AX_Floating"
-    floatGui.ResetOnSpawn = false
-    floatGui.Enabled = false -- Starts hidden because UI is initially open
-    floatGui.Parent = (gethui and gethui()) or LP:WaitForChild("PlayerGui")
-
-    local floatBtn = Instance.new("ImageButton")
-    floatBtn.Size = UDim2.fromOffset(45, 45)
-    floatBtn.Position = UDim2.new(0, 20, 0, 20)
-    floatBtn.BackgroundColor3 = Color3.fromHex("#150F23")
-    floatBtn.Image = "rbxassetid://7770167407"
-    floatBtn.ImageColor3 = Color3.fromHex("#A855F7")
-    floatBtn.Parent = floatGui
-    
-    local fCorner = Instance.new("UICorner"); fCorner.CornerRadius = UDim.new(0, 8); fCorner.Parent = floatBtn
-    local fStroke = Instance.new("UIStroke"); fStroke.Color = Color3.fromHex("#8B5CF6"); fStroke.Thickness = 2; fStroke.Parent = floatBtn
-
-    local statsBox = Instance.new("Frame")
-    statsBox.Size = UDim2.fromOffset(120, 45)
-    statsBox.Position = UDim2.new(0, 75, 0, 20)
-    statsBox.BackgroundColor3 = Color3.fromHex("#0A0710")
-    statsBox.BorderSizePixel = 0
-    statsBox.Parent = floatGui
-    local sCorner = Instance.new("UICorner"); sCorner.CornerRadius = UDim.new(0, 8); sCorner.Parent = statsBox
-    local sStroke = Instance.new("UIStroke"); sStroke.Color = Color3.fromHex("#8B5CF6"); sStroke.Thickness = 1; sStroke.Transparency = 0.5; sStroke.Parent = statsBox
-
-    local pingLabel = Instance.new("TextLabel")
-    pingLabel.Size = UDim2.new(1, 0, 0.5, 0)
-    pingLabel.Position = UDim2.new(0, 0, 0, 2)
-    pingLabel.BackgroundTransparency = 1
-    pingLabel.Text = "Ping: 0 ms"
-    pingLabel.TextColor3 = Color3.fromHex("#C4B5FD")
-    pingLabel.Font = Enum.Font.GothamMedium
-    pingLabel.TextSize = 12
-    pingLabel.Parent = statsBox
-
-    local fpsLabel = Instance.new("TextLabel")
-    fpsLabel.Size = UDim2.new(1, 0, 0.5, 0)
-    fpsLabel.Position = UDim2.new(0, 0, 0.5, 0)
-    fpsLabel.BackgroundTransparency = 1
-    fpsLabel.Text = "FPS: 60"
-    fpsLabel.TextColor3 = Color3.fromHex("#C4B5FD")
-    fpsLabel.Font = Enum.Font.GothamMedium
-    fpsLabel.TextSize = 12
-    fpsLabel.Parent = statsBox
-
-    -- Make Float Button Draggable
-    local dragging, dragInput, dragStart, startPos
-    local isDragging = false
-
-    floatBtn.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            isDragging = true
-            dragStart = input.Position
-            startPos = floatBtn.Position
-            
-            input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then
-                    isDragging = false
-                end
-            end)
-        end
-    end)
-    
-    floatBtn.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-            dragInput = input
-        end
-    end)
-    
-    UserInputService.InputChanged:Connect(function(input)
-        if input == dragInput and isDragging then
-            local delta = input.Position - dragStart
-            floatBtn.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-            statsBox.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X + 55, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-        end
-    end)
-
-    -- Click Float Button to Restore UI (Forces the main UI to open, which auto-hides the float via loop)
-    local lastClick = 0
-    floatBtn.MouseButton1Click:Connect(function()
-        if tick() - lastClick < 0.2 then return end
-        lastClick = tick()
-        if windGui then
-            windGui.Enabled = true
-        end
-    end)
-
-    -- 10. The Perfect Sync (Guarantees the float ONLY shows when UI is hidden)
-    RunService.RenderStepped:Connect(function()
-        if windGui and floatGui then
-            floatGui.Enabled = not windGui.Enabled
-        end
-    end)
-
-    -- 11. Loop to update Ping and FPS
-    task.spawn(function()
-        local frameCount = 0
-        local lastTime = tick()
-        
-        RunService.RenderStepped:Connect(function()
-            frameCount = frameCount + 1
-        end)
-
-        while task.wait(1) do
-            local currentTime = tick()
-            local fps = math.floor(frameCount / (currentTime - lastTime))
-            fpsLabel.Text = "FPS: " .. fps
-            frameCount = 0
-            lastTime = currentTime
-            
-            local pingVal = game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValueString()
-            pingLabel.Text = "Ping: " .. pingVal
-        end
-    end)
 end)
