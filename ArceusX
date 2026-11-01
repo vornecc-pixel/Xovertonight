@@ -1,4 +1,3 @@
--- ArceusX.lua
 local function MakeArceusTheme(WindUI)
     return {
         Name = "ArceusX",
