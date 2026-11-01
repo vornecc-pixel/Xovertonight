@@ -28,7 +28,7 @@ showLoading(checks, function()
     WindUI:AddTheme(MakeArceusTheme(WindUI))
     WindUI:SetTheme("ArceusX")
 
-    -- 6. Create the Window (Acrylic OFF to stop mobile lag/shaking)
+    -- 6. Create the Window
     local Window = WindUI:CreateWindow({
         Title    = "AX",
         Author   = "Arceus X",
@@ -41,28 +41,19 @@ showLoading(checks, function()
         User = { Enabled = true },
         OpenButton = { 
             Title = "AX", 
-            Enabled = false, -- Custom floating button used instead
+            Enabled = false, -- Disabled in favor of the custom floating one
         },
         Icon = "rbxassetid://7770167407", 
     })
 
-    -- 7. UI Visibility Logic (Reused by float button and keybind)
-    local mainGuiVisible = true
-    local floatGui -- Forward declaration
-
-    local function SetUIVisibility(state)
-        mainGuiVisible = state
-        
-        -- Toggle the main window
+    -- 7. Locate WindUI's main ScreenGui safely
+    local windGui = (gethui and gethui() or LP:WaitForChild("PlayerGui")):FindFirstChild("WindUI")
+    if not windGui then
         for _, v in pairs((gethui and gethui() or LP:WaitForChild("PlayerGui")):GetChildren()) do
             if v:IsA("ScreenGui") and v.Name ~= "AX_Floating" and v.Name ~= "AX_Loading" then
-                v.Enabled = mainGuiVisible
+                windGui = v
+                break
             end
-        end
-        
-        -- Toggle the floating minimize button and stats box
-        if floatGui then
-            floatGui.Enabled = not mainGuiVisible
         end
     end
 
@@ -98,10 +89,12 @@ showLoading(checks, function()
     -- Custom Keybind Toggle
     SettingsTab:Keybind({
         Title = "Toggle UI Keybind",
-        Desc = "Press any key to toggle the main UI. Toggle the switch to enable/disable.",
+        Desc = "Press any key to toggle the main UI.",
         Value = "RightShift", 
         Callback = function()
-            SetUIVisibility(not mainGuiVisible)
+            if windGui then
+                windGui.Enabled = not windGui.Enabled
+            end
         end
     })
 
@@ -109,7 +102,7 @@ showLoading(checks, function()
     SettingsTab:Section({ Title = "Performance & Stability", Opened = true })
     SettingsTab:Toggle({
         Title = "Fix Game Shake (Physics)",
-        Desc = "If your character still shakes, toggle this. It briefly anchors you to stop physics jitter.",
+        Desc = "If your character shakes, toggle this. It briefly anchors you to stop physics jitter.",
         Value = false,
         Callback = function(state)
             if state then
@@ -206,10 +199,10 @@ showLoading(checks, function()
     })
 
     -- 9. Minimize Button & Ping/FPS Stats Box
-    floatGui = Instance.new("ScreenGui")
+    local floatGui = Instance.new("ScreenGui")
     floatGui.Name = "AX_Floating"
     floatGui.ResetOnSpawn = false
-    floatGui.Enabled = false -- Start hidden because the main UI is currently open
+    floatGui.Enabled = false -- Starts hidden because UI is initially open
     floatGui.Parent = (gethui and gethui()) or LP:WaitForChild("PlayerGui")
 
     local floatBtn = Instance.new("ImageButton")
@@ -284,15 +277,24 @@ showLoading(checks, function()
         end
     end)
 
-    -- Click Float Button to Restore UI
+    -- Click Float Button to Restore UI (Forces the main UI to open, which auto-hides the float via loop)
     local lastClick = 0
     floatBtn.MouseButton1Click:Connect(function()
         if tick() - lastClick < 0.2 then return end
         lastClick = tick()
-        SetUIVisibility(true) -- Forces the main UI to show up and the float to hide
+        if windGui then
+            windGui.Enabled = true
+        end
     end)
 
-    -- Loop to update Ping and FPS (Optimized for 1-second updates)
+    -- 10. The Perfect Sync (Guarantees the float ONLY shows when UI is hidden)
+    RunService.RenderStepped:Connect(function()
+        if windGui and floatGui then
+            floatGui.Enabled = not windGui.Enabled
+        end
+    end)
+
+    -- 11. Loop to update Ping and FPS
     task.spawn(function()
         local frameCount = 0
         local lastTime = tick()
