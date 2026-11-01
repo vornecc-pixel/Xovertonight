@@ -28,42 +28,25 @@ showLoading(checks, function()
     WindUI:AddTheme(MakeArceusTheme(WindUI))
     WindUI:SetTheme("ArceusX")
 
-    -- 6. Create the Window
+    -- 6. Create the Window (Turned Acrylic OFF to stop mobile lag/shaking)
     local Window = WindUI:CreateWindow({
         Title    = "AX",
         Author   = "Arceus X",
         Folder   = "AX",
         Size     = UDim2.fromOffset(580, 460),
         Theme    = "ArceusX",
-        Acrylic  = true,
+        Acrylic  = false, -- Changed to false. Acrylic causes massive FPS drops on mobile.
         Resizable = true,
         Topbar = { Height = 52, ButtonsType = "Default" },
         User = { Enabled = true },
         OpenButton = { 
             Title = "AX", 
-            Enabled = false, -- Disabled the default one so we can use our custom floating one
+            Enabled = false, -- Custom floating button used instead
         },
         Icon = "rbxassetid://7770167407", 
     })
 
-    -- 7. Anti-Shake Logic (Fixes the game bugging out/vibrating on execution)
-    local fixShake = false
-    RunService.Heartbeat:Connect(function()
-        if fixShake and LP.Character then
-            local hrp = LP.Character:FindFirstChild("HumanoidRootPart")
-            if hrp then
-                -- Zero out extreme velocities that cause the character to vibrate
-                if hrp.AssemblyLinearVelocity.Magnitude > 100 then
-                    hrp.AssemblyLinearVelocity = Vector3.zero
-                end
-                if hrp.AssemblyAngularVelocity.Magnitude > 50 then
-                    hrp.AssemblyAngularVelocity = Vector3.zero
-                end
-            end
-        end
-    end)
-
-    -- 8. Set up the Tabs
+    -- 7. Set up the Tabs
     local HomeTab = Window:Tab({ Title = "Home", Icon = "house" })
     local SettingsTab = Window:Tab({ Title = "Settings", Icon = "settings" })
 
@@ -95,11 +78,26 @@ showLoading(checks, function()
     -- Settings Tab: Stability
     SettingsTab:Section({ Title = "Performance & Stability", Opened = true })
     SettingsTab:Toggle({
-        Title = "Fix Game Shake",
-        Desc = "Prevents your character from violently vibrating/shaking when executing the script.",
+        Title = "Fix Game Shake (Physics)",
+        Desc = "If your character still shakes, toggle this. It locks your humanoid state to keep you grounded.",
         Value = false,
         Callback = function(state)
-            fixShake = state
+            if state then
+                task.spawn(function()
+                    while state do
+                        if LP.Character then
+                            local hrp = LP.Character:FindFirstChild("HumanoidRootPart")
+                            if hrp then
+                                -- Anchoring the HRP briefly can stop the physics jitter without breaking the game
+                                hrp.Anchored = true 
+                                task.wait(0.05)
+                                hrp.Anchored = false
+                            end
+                        end
+                        task.wait(0.1)
+                    end
+                end)
+            end
         end
     })
 
@@ -184,7 +182,6 @@ showLoading(checks, function()
     floatGui.ResetOnSpawn = false
     floatGui.Parent = (gethui and gethui()) or LP:WaitForChild("PlayerGui")
 
-    -- Floating 32-bit Face Icon
     local floatBtn = Instance.new("ImageButton")
     floatBtn.Size = UDim2.fromOffset(45, 45)
     floatBtn.Position = UDim2.new(0, 20, 0, 20)
@@ -196,7 +193,6 @@ showLoading(checks, function()
     local fCorner = Instance.new("UICorner"); fCorner.CornerRadius = UDim.new(0, 8); fCorner.Parent = floatBtn
     local fStroke = Instance.new("UIStroke"); fStroke.Color = Color3.fromHex("#8B5CF6"); fStroke.Thickness = 2; fStroke.Parent = floatBtn
 
-    -- Stats Box (Ping & FPS)
     local statsBox = Instance.new("Frame")
     statsBox.Size = UDim2.fromOffset(120, 45)
     statsBox.Position = UDim2.new(0, 75, 0, 20)
@@ -262,7 +258,6 @@ showLoading(checks, function()
     local mainGuiVisible = true
     local lastClick = 0
     floatBtn.MouseButton1Click:Connect(function()
-        -- Prevent click if dragging
         if tick() - lastClick < 0.2 then return end
         lastClick = tick()
         
@@ -275,21 +270,24 @@ showLoading(checks, function()
         end
     end)
 
-    -- Loop to update Ping and FPS
-    local frameCount = 0
-    local lastTime = tick()
-    
-    RunService.RenderStepped:Connect(function()
-        frameCount = frameCount + 1
-        local currentTime = tick()
-        if currentTime - lastTime >= 1 then
+    -- Loop to update Ping and FPS (Changed to task.wait so it doesn't destroy your FPS)
+    task.spawn(function()
+        local frameCount = 0
+        local lastTime = tick()
+        
+        RunService.RenderStepped:Connect(function()
+            frameCount = frameCount + 1
+        end)
+
+        while task.wait(1) do
+            local currentTime = tick()
             local fps = math.floor(frameCount / (currentTime - lastTime))
             fpsLabel.Text = "FPS: " .. fps
             frameCount = 0
             lastTime = currentTime
+            
+            local pingVal = game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValueString()
+            pingLabel.Text = "Ping: " .. pingVal
         end
-        
-        local pingVal = game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValueString()
-        pingLabel.Text = "Ping: " .. pingVal
     end)
 end)
