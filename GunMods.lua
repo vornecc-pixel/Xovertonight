@@ -2,13 +2,11 @@
 return function(Window, Library)
     local RunService = game:GetService("RunService")
     
-    -- ANTI-CHEAT CLOAKING
     local safeGetGC = newcclosure(getgc)
     local safeSetReadonly = newcclosure(setreadonly)
     local safeRawSet = newcclosure(rawset)
     local safeRawGet = newcclosure(rawget)
 
-    -- UI Setup (Obelus)
     local Tab = Window:tab({name = "Gun Mods"})
     local col1 = Tab:column({fill = true})
     local col2 = Tab:column({fill = true})
@@ -21,7 +19,6 @@ return function(Window, Library)
     local SwaySec = col2:section({name = "Sway"})
     local KickSec = col2:section({name = "Kick"})
     
-    -- Config
     local Mods = {
         Enabled = false, InstantEquip = false, EquipTime = 0.001,
         InstantAds = false, AdsTime = 0.001, NoSpread = false,
@@ -34,13 +31,10 @@ return function(Window, Library)
     local TIMING_KEYS = { "EQUIP_TIME", "HOLSTER_TIME", "AdsTime", "AdsOutTime", "adsTime" }
     local activeStates, tracked = {}, {}
 
-    -- TOGGLE FIX: Track original values before modifying
     local function track(tbl, key)
         if not tracked[tbl] then tracked[tbl] = {} end
         if tracked[tbl][key] == nil then tracked[tbl][key] = safeRawGet(tbl, key) end
     end
-    
-    -- TOGGLE FIX: Restore original values when disabled
     local function restoreAll()
         for tbl, keys in pairs(tracked) do
             pcall(safeSetReadonly, tbl, false)
@@ -49,7 +43,6 @@ return function(Window, Library)
         table.clear(tracked)
     end
 
-    -- GC Scanner
     task.spawn(function()
         while task.wait(1) do
             if Mods.Enabled and safeGetGC then
@@ -58,7 +51,6 @@ return function(Window, Library)
                     if type(tbl) == "table" then
                         pcall(safeSetReadonly, tbl, false)
                         
-                        -- Timing
                         if Mods.InstantEquip or Mods.InstantAds then
                             for _, k in ipairs(TIMING_KEYS) do
                                 if safeRawGet(tbl, k) ~= nil then
@@ -71,7 +63,6 @@ return function(Window, Library)
                             end
                         end
                         
-                        -- Spread
                         if Mods.NoSpread and safeRawGet(tbl, "rate") ~= nil then
                             track(tbl, "rate"); track(tbl, "auto")
                             track(tbl, "spread"); track(tbl, "adsSpread"); track(tbl, "moveSpread")
@@ -79,7 +70,6 @@ return function(Window, Library)
                             safeRawSet(tbl, "spread", Mods.Spread); safeRawSet(tbl, "adsSpread", Mods.AdsSpread); safeRawSet(tbl, "moveSpread", Mods.MoveSpread)
                         end
                         
-                        -- Recoil
                         if Mods.NoRecoil and safeRawGet(tbl, "VisualBloom") ~= nil then
                             track(tbl, "VisualBloom"); track(tbl, "MOVE_SPREAD"); track(tbl, "AirSpread")
                             track(tbl, "RecoilClimb"); track(tbl, "ShakeMax"); track(tbl, "AdsMoveMult"); track(tbl, "AimRun")
@@ -88,7 +78,6 @@ return function(Window, Library)
                             safeRawSet(tbl, "AdsMoveMult", 1); safeRawSet(tbl, "AimRun", 1)
                         end
                         
-                        -- Sway
                         if Mods.NoSway and safeRawGet(tbl, "SWAY_MAX") ~= nil then
                             track(tbl, "KICK_PITCH"); track(tbl, "KICK_BACK"); track(tbl, "SWAY")
                             track(tbl, "SWAY_MAX"); track(tbl, "BOB_WALK"); track(tbl, "BOB_IDLE"); track(tbl, "LEAN")
@@ -97,7 +86,6 @@ return function(Window, Library)
                             safeRawSet(tbl, "BOB_WALK", Mods.BobWalk); safeRawSet(tbl, "BOB_IDLE", Mods.BobIdle); safeRawSet(tbl, "LEAN", Mods.Lean)
                         end
                         
-                        -- Active Gun State
                         if safeRawGet(tbl, "SpreadPx") ~= nil and safeRawGet(tbl, "equipAt") ~= nil then
                             table.insert(found, tbl)
                         end
@@ -105,13 +93,11 @@ return function(Window, Library)
                 end
                 activeStates = found
             else
-                -- If turned off, restore original values
                 if next(tracked) then restoreAll() end
             end
         end
     end)
 
-    -- Frame Enforcer
     RunService.RenderStepped:Connect(function()
         if not Mods.Enabled then activeStates = {} return end
         for _, state in ipairs(activeStates) do
@@ -122,29 +108,28 @@ return function(Window, Library)
         end
     end)
 
-    -- UI Config
     MasterSec:addToggle({name = "Enable Gun Mods", flag = "G_Enable", callback = function(s) Mods.Enabled = s end})
     
     TimingSec:addToggle({name = "Instant Equip", flag = "G_InstEquip", callback = function(s) Mods.InstantEquip = s end})
-    TimingSec:addSlider({name = "Equip Time", min = 0.001, max = 1, default = 0.001, interval = 0.001, flag = "G_EquipTime", callback = function(v) Mods.EquipTime = v end})
+    TimingSec:addSlider({name = "Equip Time", min = 0.001, max = 1, default = 0.001, interval = 0.001, showValue = true, flag = "G_EquipTime", callback = function(v) Mods.EquipTime = v end})
     TimingSec:addToggle({name = "Instant ADS", flag = "G_InstAds", callback = function(s) Mods.InstantAds = s end})
-    TimingSec:addSlider({name = "ADS Time", min = 0.001, max = 1, default = 0.001, interval = 0.001, flag = "G_AdsTime", callback = function(v) Mods.AdsTime = v end})
+    TimingSec:addSlider({name = "ADS Time", min = 0.001, max = 1, default = 0.001, interval = 0.001, showValue = true, flag = "G_AdsTime", callback = function(v) Mods.AdsTime = v end})
     
     SpreadSec:addToggle({name = "No Spread", flag = "G_NoSpread", callback = function(s) Mods.NoSpread = s end})
-    SpreadSec:addSlider({name = "Fire Rate", min = 0.01, max = 1, default = 0.05, interval = 0.01, flag = "G_Rate", callback = function(v) Mods.Rate = v end})
+    SpreadSec:addSlider({name = "Fire Rate", min = 0.01, max = 1, default = 0.05, interval = 0.01, showValue = true, flag = "G_Rate", callback = function(v) Mods.Rate = v end})
     SpreadSec:addToggle({name = "Force Auto", flag = "G_ForceAuto", default = true, callback = function(s) Mods.ForceAuto = s end})
-    SpreadSec:addSlider({name = "Spread", min = 0, max = 1, default = 0, interval = 0.01, flag = "G_Spread", callback = function(v) Mods.Spread = v end})
+    SpreadSec:addSlider({name = "Spread", min = 0, max = 1, default = 0, interval = 0.01, showValue = true, flag = "G_Spread", callback = function(v) Mods.Spread = v end})
     
     RecoilSec:addToggle({name = "No Recoil", flag = "G_NoRecoil", callback = function(s) Mods.NoRecoil = s end})
-    RecoilSec:addSlider({name = "Visual Bloom", min = 0, max = 1, default = 0, interval = 0.01, flag = "G_Bloom", callback = function(v) Mods.VisualBloom = v end})
-    RecoilSec:addSlider({name = "Recoil Climb", min = 0, max = 1, default = 0, interval = 0.01, flag = "G_Climb", callback = function(v) Mods.RecoilClimb = v end})
-    RecoilSec:addSlider({name = "Shake Max", min = 0, max = 1, default = 0, interval = 0.01, flag = "G_Shake", callback = function(v) Mods.ShakeMax = v end})
+    RecoilSec:addSlider({name = "Visual Bloom", min = 0, max = 1, default = 0, interval = 0.01, showValue = true, flag = "G_Bloom", callback = function(v) Mods.VisualBloom = v end})
+    RecoilSec:addSlider({name = "Recoil Climb", min = 0, max = 1, default = 0, interval = 0.01, showValue = true, flag = "G_Climb", callback = function(v) Mods.RecoilClimb = v end})
+    RecoilSec:addSlider({name = "Shake Max", min = 0, max = 1, default = 0, interval = 0.01, showValue = true, flag = "G_Shake", callback = function(v) Mods.ShakeMax = v end})
     
     SwaySec:addToggle({name = "No Sway", flag = "G_NoSway", callback = function(s) Mods.NoSway = s end})
-    SwaySec:addSlider({name = "Sway", min = 0, max = 1, default = 0, interval = 0.01, flag = "G_Sway", callback = function(v) Mods.Sway = v end})
-    SwaySec:addSlider({name = "Sway Max", min = 0, max = 1, default = 0, interval = 0.01, flag = "G_SwayMax", callback = function(v) Mods.SwayMax = v end})
-    SwaySec:addSlider({name = "Bob Walk", min = 0, max = 1, default = 0, interval = 0.01, flag = "G_BobWalk", callback = function(v) Mods.BobWalk = v end})
+    SwaySec:addSlider({name = "Sway", min = 0, max = 1, default = 0, interval = 0.01, showValue = true, flag = "G_Sway", callback = function(v) Mods.Sway = v end})
+    SwaySec:addSlider({name = "Sway Max", min = 0, max = 1, default = 0, interval = 0.01, showValue = true, flag = "G_SwayMax", callback = function(v) Mods.SwayMax = v end})
+    SwaySec:addSlider({name = "Bob Walk", min = 0, max = 1, default = 0, interval = 0.01, showValue = true, flag = "G_BobWalk", callback = function(v) Mods.BobWalk = v end})
     
-    KickSec:addSlider({name = "Kick Pitch", min = 0, max = 1, default = 0, interval = 0.01, flag = "G_KickPitch", callback = function(v) Mods.KickPitch = v end})
-    KickSec:addSlider({name = "Kick Back", min = 0, max = 1, default = 0, interval = 0.01, flag = "G_KickBack", callback = function(v) Mods.KickBack = v end})
+    KickSec:addSlider({name = "Kick Pitch", min = 0, max = 1, default = 0, interval = 0.01, showValue = true, flag = "G_KickPitch", callback = function(v) Mods.KickPitch = v end})
+    KickSec:addSlider({name = "Kick Back", min = 0, max = 1, default = 0, interval = 0.01, showValue = true, flag = "G_KickBack", callback = function(v) Mods.KickBack = v end})
 end
