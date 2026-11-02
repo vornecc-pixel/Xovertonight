@@ -1,9 +1,8 @@
--- LoadingScreen.lua
+\-- LoadingScreen.lua
 return function(checks, callback)
     local RunService = game:GetService("RunService")
     local Camera = workspace.CurrentCamera
     local Center = Camera.ViewportSize / 2
-    
     local cleanupList = {}
 
     -- Background
@@ -14,16 +13,16 @@ return function(checks, callback)
     Bg.ZIndex = 50
     table.insert(cleanupList, Bg)
 
-    -- Scrolling Hacker Code
+    -- Scrolling Code
     local CodeText = Drawing.new("Text")
     CodeText.Font = Drawing.Fonts.Code
     CodeText.Size = 12
     CodeText.Color = Color3.fromHex("#00FF00")
-    CodeText.Position = Vector2.new(Center.X - 200, Center.Y - 200)
+    CodeText.Position = Vector2.new(Center.X - 150, Center.Y - 200)
     CodeText.ZIndex = 51
     table.insert(cleanupList, CodeText)
 
-    -- 32-BIT LUA PIXEL LOGO ("A")
+    -- 32-BIT PIXEL LOGO
     local pixelSize = 8
     local logoMap = {
         "00111100",
@@ -35,7 +34,6 @@ return function(checks, callback)
         "11000011",
         "11000011"
     }
-    
     local logoPixels = {}
     local startX = Center.X - (#logoMap[1] * pixelSize) / 2
     local startY = Center.Y - 150
@@ -117,7 +115,6 @@ return function(checks, callback)
     AccessGranted.ZIndex = 60
     table.insert(cleanupList, AccessGranted)
 
-    -- Animation
     local codeSnippet = [[
     bypass_ac.init(0x7FF);
     hook_function(L"ntdll.dll", "NtQueryInformationProcess");
@@ -147,7 +144,6 @@ return function(checks, callback)
 
         task.wait(0.5)
         
-        -- Fade out
         local elements = {Title, Sub, BarBg, BarFill, StatusText}
         for _, obj in pairs(elements) do
             task.spawn(function()
@@ -169,7 +165,6 @@ return function(checks, callback)
         if renderConn then renderConn:Disconnect() end
         CodeText:Remove()
         
-        -- Pop ACCESS GRANTED
         AccessGranted.Transparency = 0
         AccessGranted.Size = 30
         for i = 30, 40, 2 do
@@ -183,7 +178,6 @@ return function(checks, callback)
             task.wait(0.02)
         end
 
-        -- Cleanup
         for _, obj in pairs(cleanupList) do pcall(function() obj:Remove() end) end
         for _, px in ipairs(logoPixels) do pcall(function() px:Remove() end) end
 
