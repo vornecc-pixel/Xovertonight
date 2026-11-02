@@ -2,6 +2,7 @@
 return function(Window, Library)
     local RunService = game:GetService("RunService")
     
+    -- AC METATABLE PROTECTION
     local safeGetGC = newcclosure(getgc)
     local safeSetReadonly = newcclosure(setreadonly)
     local safeRawSet = newcclosure(rawset)
@@ -65,18 +66,30 @@ return function(Window, Library)
         for _, tbl in ipairs(toRemove) do tracked[tbl] = nil end
     end
 
+    -- LAG-FREE SCANNER
     task.spawn(function()
         while isRunning do
-            task.wait(1)
+            task.wait(2) -- Scans every 2 seconds instead of every 1 second to save CPU
             if isRunning and Mods.Enabled and safeGetGC then
                 local found = {}
+                local count = 0
+                
                 for _, tbl in pairs(safeGetGC(true)) do
                     if type(tbl) == "table" then
-                        pcall(safeSetReadonly, tbl, false)
+                        count = count + 1
+                        -- YIELD: Pause for 1 frame every 1000 tables to stop lag spikes
+                        if count % 1000 == 0 then task.wait() end 
                         
+                        -- 1. Check if it's a gun state first (Fastest check)
+                        if safeRawGet(tbl, "SpreadPx") ~= nil and safeRawGet(tbl, "equipAt") ~= nil then
+                            table.insert(found, tbl)
+                        end
+
+                        -- 2. Only unfreeze and modify if the specific keys exist
                         if Mods.InstantEquip or Mods.InstantAds then
                             for _, k in ipairs(timingProps) do
                                 if safeRawGet(tbl, k) ~= nil then
+                                    pcall(safeSetReadonly, tbl, false)
                                     if k == "AdsTime" or k == "AdsOutTime" or k == "adsTime" then
                                         if Mods.InstantAds then track(tbl, k); safeRawSet(tbl, k, Mods.AdsTime) end
                                     else
@@ -87,12 +100,14 @@ return function(Window, Library)
                         end
                         
                         if Mods.NoSpread and safeRawGet(tbl, "rate") ~= nil then
+                            pcall(safeSetReadonly, tbl, false)
                             for _, p in ipairs(spreadProps) do track(tbl, p) end
                             safeRawSet(tbl, "rate", Mods.Rate); safeRawSet(tbl, "auto", Mods.ForceAuto)
                             safeRawSet(tbl, "spread", Mods.Spread); safeRawSet(tbl, "adsSpread", Mods.AdsSpread); safeRawSet(tbl, "moveSpread", Mods.MoveSpread)
                         end
                         
                         if Mods.NoRecoil and safeRawGet(tbl, "VisualBloom") ~= nil then
+                            pcall(safeSetReadonly, tbl, false)
                             for _, p in ipairs(recoilProps) do track(tbl, p) end
                             safeRawSet(tbl, "VisualBloom", Mods.VisualBloom); safeRawSet(tbl, "MOVE_SPREAD", 0); safeRawSet(tbl, "AirSpread", 0)
                             safeRawSet(tbl, "RecoilClimb", Mods.RecoilClimb); safeRawSet(tbl, "ShakeMax", Mods.ShakeMax)
@@ -100,14 +115,11 @@ return function(Window, Library)
                         end
                         
                         if Mods.NoSway and safeRawGet(tbl, "SWAY_MAX") ~= nil then
+                            pcall(safeSetReadonly, tbl, false)
                             for _, p in ipairs(swayProps) do track(tbl, p) end
                             safeRawSet(tbl, "KICK_PITCH", Mods.KickPitch); safeRawSet(tbl, "KICK_BACK", Mods.KickBack)
                             safeRawSet(tbl, "SWAY", Mods.Sway); safeRawSet(tbl, "SWAY_MAX", Mods.SwayMax)
                             safeRawSet(tbl, "BOB_WALK", Mods.BobWalk); safeRawSet(tbl, "BOB_IDLE", Mods.BobIdle); safeRawSet(tbl, "LEAN", Mods.Lean)
-                        end
-                        
-                        if safeRawGet(tbl, "SpreadPx") ~= nil and safeRawGet(tbl, "equipAt") ~= nil then
-                            table.insert(found, tbl)
                         end
                     end
                 end
@@ -129,15 +141,12 @@ return function(Window, Library)
     uiToggles.Master = MasterSec:addToggle({name = "Enable Gun Mods", flag = "G_Enable", callback = function(s) 
         Mods.Enabled = s
         if not s then
-            Mods.NoSpread = false; Mods.NoRecoil = false; Mods.NoSway = false
-            Mods.InstantEquip = false; Mods.InstantAds = false
-            
+            Mods.NoSpread = false; Mods.NoRecoil = false; Mods.NoSway = false; Mods.InstantEquip = false; Mods.InstantAds = false
             if uiToggles.Spread and uiToggles.Spread.Set then uiToggles.Spread:Set(false) end
             if uiToggles.Recoil and uiToggles.Recoil.Set then uiToggles.Recoil:Set(false) end
             if uiToggles.Sway and uiToggles.Sway.Set then uiToggles.Sway:Set(false) end
             if uiToggles.InstEq and uiToggles.InstEq.Set then uiToggles.InstEq:Set(false) end
             if uiToggles.InstAds and uiToggles.InstAds.Set then uiToggles.InstAds:Set(false) end
-            
             revertProperties(allProps)
         end
     end})
@@ -166,12 +175,9 @@ return function(Window, Library)
     KickSec:addSlider({name = "Kick Pitch", min = 0, max = 1, default = 0, interval = 0.01, showValue = true, flag = "G_KickPitch", callback = function(v) Mods.KickPitch = v end})
     KickSec:addSlider({name = "Kick Back", min = 0, max = 1, default = 0, interval = 0.01, showValue = true, flag = "G_KickBack", callback = function(v) Mods.KickBack = v end})
 
-    -- Return the unload function for main.lua
     return function()
         isRunning = false
-        for _, conn in ipairs(connections) do
-            pcall(function() conn:Disconnect() end)
-        end
+        for _, conn in ipairs(connections) do pcall(function() conn:Disconnect() end) end
         revertProperties(allProps)
     end
 end
