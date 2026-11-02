@@ -3,11 +3,7 @@ return function(checks, callback)
     local RunService = game:GetService("RunService")
     local Camera = workspace.CurrentCamera
     local Center = Camera.ViewportSize / 2
-    
-    -- YOUR GITHUB RAW LINK
-    local PrimaryImageURL = "https://raw.githubusercontent.com/vornecc-pixel/Xovertonight/main/ArceusLogo.png" 
 
-    -- Track everything for cleanup
     local cleanupList = {}
 
     -- Deep Black Background
@@ -28,38 +24,19 @@ return function(checks, callback)
     CodeText.Center = false
     CodeText.ZIndex = 51
     table.insert(cleanupList, CodeText)
-    
-    -- Top Logo
-    local ImageSize = Vector2.new(100, 100)
-    local Image = Drawing.new("Image")
-    Image.Size = ImageSize
-    Image.Position = Vector2.new(Center.X - 50, Center.Y - 140)
-    Image.ZIndex = 52
-    table.insert(cleanupList, Image)
 
-    -- Safely attempt to load the image
-    task.spawn(function()
-        task.wait(0.1)
-        local success = pcall(function()
-            Image.Data = PrimaryImageURL
-        end)
-        
-        -- If the image fails, draw a giant purple "A" as a fallback
-        if not success then
-            Image.Visible = false
-            local FallbackLogo = Drawing.new("Text")
-            FallbackLogo.Font = Drawing.Fonts.Plex
-            FallbackLogo.Size = 80
-            FallbackLogo.Color = Color3.fromHex("#8A2BE2")
-            FallbackLogo.Text = "A"
-            FallbackLogo.Position = Vector2.new(Center.X, Center.Y - 120)
-            FallbackLogo.Center = true
-            FallbackLogo.Outline = true
-            FallbackLogo.OutlineColor = Color3.fromHex("#FFFFFF")
-            FallbackLogo.ZIndex = 52
-            table.insert(cleanupList, FallbackLogo)
-        end
-    end)
+    -- GIANT TEXT LOGO (Replaces the broken image)
+    local LogoText = Drawing.new("Text")
+    LogoText.Font = Drawing.Fonts.Plex
+    LogoText.Size = 100
+    LogoText.Color = Color3.fromHex("#8A2BE2") -- Arceus Purple
+    LogoText.Text = "A"
+    LogoText.Position = Vector2.new(Center.X, Center.Y - 130)
+    LogoText.Center = true
+    LogoText.Outline = true
+    LogoText.OutlineColor = Color3.fromHex("#FFFFFF")
+    LogoText.ZIndex = 52
+    table.insert(cleanupList, LogoText)
 
     -- Title & Subtitle
     local Title = Drawing.new("Text")
@@ -151,7 +128,7 @@ return function(checks, callback)
     table.insert(cleanupList, AccessGranted)
 
     -- Fade In sequence
-    local elements = {Image, Title, Sub, LeftLine, RightLine, BarBg, BarFill, PercentText, StatusText}
+    local elements = {LogoText, Title, Sub, LeftLine, RightLine, BarBg, BarFill, PercentText, StatusText}
     for _, obj in pairs(elements) do obj.Transparency = 1 end
     CodeText.Transparency = 1
     
