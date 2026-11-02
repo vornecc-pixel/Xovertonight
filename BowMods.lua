@@ -1,5 +1,5 @@
 -- BowMods.lua
-return function(Window, Library)
+return function(Window, WindUI)
     local RunService = game:GetService("RunService")
     local newcclosure = (type(newcclosure) == "function") and newcclosure or function(f) return f end
 
@@ -8,13 +8,10 @@ return function(Window, Library)
     local safeRawSet = newcclosure(rawset)
     local safeRawGet = newcclosure(rawget)
 
-    local Tab = Window:tab({name = "Bow Mods"})
-    local col1 = Tab:column({fill = true})
-    local col2 = Tab:column({fill = true})
-    
-    local MasterSec = col1:section({name = "Master"})
-    local BowSec = col1:section({name = "Bow Tweaks"})
-    local UniversalSec = col2:section({name = "Universal Bypass"})
+    local Tab = Window:Tab({ Title = "Bow Mods", Icon = "crosshair" })
+    local MasterSec = Tab:Section({ Title = "Master", Opened = true })
+    local BowSec = Tab:Section({ Title = "Bow Tweaks", Opened = true })
+    local UniversalSec = Tab:Section({ Title = "Universal Bypass", Opened = true })
 
     local Mods = { Enabled = false, InstantDraw = false, InstantReload = false, NoCooldown = false, NoRecoil = false, NoDrop = false }
     local Universal = { InfiniteAmmo = false, NoAirBlock = false }
@@ -182,27 +179,28 @@ return function(Window, Library)
         end
     end))
 
-    uiToggles.Master = MasterSec:addToggle({name = "Enable Bow Mods", flag = "B_Enable", callback = function(s) 
+    -- WindUI Syntax
+    uiToggles.Master = MasterSec:Toggle({ Title = "Enable Bow Mods", Value = false, Callback = function(s) 
         Mods.Enabled = s
         if not s then
             Mods.InstantDraw = false; Mods.InstantReload = false; Mods.NoCooldown = false; Mods.NoRecoil = false; Mods.NoDrop = false
-            if uiToggles.Draw and uiToggles.Draw.Set then uiToggles.Draw:Set(false) end
-            if uiToggles.Reload and uiToggles.Reload.Set then uiToggles.Reload:Set(false) end
-            if uiToggles.Cooldown and uiToggles.Cooldown.Set then uiToggles.Cooldown:Set(false) end
-            if uiToggles.Recoil and uiToggles.Recoil.Set then uiToggles.Recoil:Set(false) end
-            if uiToggles.Drop and uiToggles.Drop.Set then uiToggles.Drop:Set(false) end
+            if uiToggles.Draw then uiToggles.Draw:Set(false) end
+            if uiToggles.Reload then uiToggles.Reload:Set(false) end
+            if uiToggles.Cooldown then uiToggles.Cooldown:Set(false) end
+            if uiToggles.Recoil then uiToggles.Recoil:Set(false) end
+            if uiToggles.Drop then uiToggles.Drop:Set(false) end
             revertProperties(allProps)
         end
     end})
     
-    uiToggles.Draw = BowSec:addToggle({name = "Instant Draw", flag = "B_InstantDraw", callback = function(s) Mods.InstantDraw = s end})
-    uiToggles.Reload = BowSec:addToggle({name = "Instant Reload", flag = "B_InstantReload", callback = function(s) Mods.InstantReload = s end})
-    uiToggles.Cooldown = BowSec:addToggle({name = "No Shot Cooldown", flag = "B_NoCooldown", callback = function(s) Mods.NoCooldown = s; if not s then revertProperties(cooldownProps) end end})
-    uiToggles.Recoil = BowSec:addToggle({name = "No Recoil / Tremble", flag = "B_NoRecoil", callback = function(s) Mods.NoRecoil = s; if not s then revertProperties(trembleProps) end end})
-    uiToggles.Drop = BowSec:addToggle({name = "No Drop", flag = "B_NoDrop", callback = function(s) Mods.NoDrop = s end})
+    uiToggles.Draw = BowSec:Toggle({ Title = "Instant Draw", Value = false, Callback = function(s) Mods.InstantDraw = s end})
+    uiToggles.Reload = BowSec:Toggle({ Title = "Instant Reload", Value = false, Callback = function(s) Mods.InstantReload = s end})
+    uiToggles.Cooldown = BowSec:Toggle({ Title = "No Shot Cooldown", Value = false, Callback = function(s) Mods.NoCooldown = s; if not s then revertProperties(cooldownProps) end end})
+    uiToggles.Recoil = BowSec:Toggle({ Title = "No Recoil / Tremble", Value = false, Callback = function(s) Mods.NoRecoil = s; if not s then revertProperties(trembleProps) end end})
+    uiToggles.Drop = BowSec:Toggle({ Title = "No Drop", Value = false, Callback = function(s) Mods.NoDrop = s end})
     
-    UniversalSec:addToggle({name = "Infinite Ammo", flag = "U_InfAmmo", callback = function(s) Universal.InfiniteAmmo = s end})
-    UniversalSec:addToggle({name = "No Air Block", flag = "U_NoAirBlock", callback = function(s) Universal.NoAirBlock = s end})
+    UniversalSec:Toggle({ Title = "Infinite Ammo", Value = false, Callback = function(s) Universal.InfiniteAmmo = s end})
+    UniversalSec:Toggle({ Title = "No Air Block", Value = false, Callback = function(s) Universal.NoAirBlock = s end})
 
     return function()
         isRunning = false
