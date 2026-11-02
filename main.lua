@@ -40,33 +40,36 @@ showLoading(checks, function()
     end)
 
     -- ============================================================
-    -- FIXED MOUSE & MENU TOGGLE SYSTEM
+    -- CUSTOM TOGGLE SYSTEM (Like your old WindUI)
     -- ============================================================
     local menuOpen = true
-    
-    local original_toggle = window.toggle_menu
-    window.toggle_menu = function(self, state)
-        -- If the menu is mid-animation, block the toggle to prevent breaking
-        if self.is_closing_menu then return end
-        
-        -- If no state is provided, flip the current state
-        if state == nil then state = not menuOpen end
+    local toggleKey = Enum.KeyCode.RightShift -- Default key
+
+    -- Initialize Mouse State
+    UserInputService.MouseIconEnabled = true
+    UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+
+    -- We use this function to open/close the menu and handle the mouse
+    local function setMenuState(state)
         menuOpen = state
-        
-        if state == true then
+        if menuOpen then
             UserInputService.MouseIconEnabled = true
             UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+            window:toggle_menu(true)
         else
             UserInputService.MouseIconEnabled = false
             UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
+            window:toggle_menu(false)
         end
-        
-        return original_toggle(self, state)
     end
-    
-    -- Initial startup state
-    UserInputService.MouseIconEnabled = true
-    UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+
+    -- Listen for the key press directly
+    local toggleConnection = UserInputService.InputBegan:Connect(function(input, gp)
+        if gp then return end
+        if input.KeyCode == toggleKey then
+            setMenuState(not menuOpen)
+        end
+    end)
     -- ============================================================
 
     -- 2. Load Mods
@@ -155,19 +158,21 @@ showLoading(checks, function()
     end}); library:configListUpdate()
 
     -- ============================================================
-    -- FIXED KEYBIND (Forced to Toggle mode)
+    -- CUSTOM KEYBIND UI (Updates the toggleKey variable)
     -- ============================================================
-    local toggleBind = uiSec:addLabel({name = "Menu Toggle Keybind"}):addKeyBind({
+    uiSec:addLabel({name = "Menu Toggle Keybind (Click to change)"}):addKeyBind({
         flag = "UI_Toggle_Bind",
-        callback = function() 
-            window:toggle_menu() -- No arguments passed, lets our override handle the flip
-        end
+        callback = function() end -- The Obelus callback fires when pressed. We don't use it, we read the flag directly.
     })
-    
-    -- Force the keybind to act as a Toggle instead of a Hold
-    if toggleBind and toggleBind.SetStateType then
-        toggleBind:SetStateType("Toggle")
-    end
+
+    -- When the user clicks the box and changes the key, update our variable
+    task.spawn(function()
+        while task.wait(0.5) do
+            if flags["UI_Toggle_Bind"] and typeof(flags["UI_Toggle_Bind"]) == "EnumItem" then
+                toggleKey = flags["UI_Toggle_Bind"]
+            end
+        end
+    end)
     -- ============================================================
 
     uiSec:addToggle({name = "Watermark", flag = "UI_Watermark", callback = function(bool) WatermarkEnabled = bool end})
@@ -176,6 +181,9 @@ showLoading(checks, function()
 
     -- 5. Unload Everything
     dangerSec:addButton({name = "Unload Everything", callback = function()
+        -- Disconnect keybind
+        if toggleConnection then toggleConnection:Disconnect() end
+        
         wmRunning = false
         if wmConnection then wmConnection:Disconnect() end
         if Watermark then Watermark:Remove() end
