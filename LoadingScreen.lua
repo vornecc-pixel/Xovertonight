@@ -4,10 +4,11 @@ return function(checks, callback)
     local Camera = workspace.CurrentCamera
     local Center = Camera.ViewportSize / 2
     
-    -- Your Discord Image Link
-    local PrimaryImageURL = "https://cdn.discordapp.com/attachments/1566746103393685557/1566746494663401573/Logo-svg-e1661869205382.png"
-    -- Fallback (Roblox Asset - Guaranteed to work)
-    local FallbackImageURL = "rbxassetid://11418604619"
+    -- YOUR GITHUB RAW LINK
+    local PrimaryImageURL = "https://raw.githubusercontent.com/vornecc-pixel/Xovertonight/main/ArceusLogo.png" 
+
+    -- Track everything for cleanup
+    local cleanupList = {}
 
     -- Deep Black Background
     local Bg = Drawing.new("Square")
@@ -15,6 +16,7 @@ return function(checks, callback)
     Bg.Color = Color3.fromHex("#050505")
     Bg.Filled = true
     Bg.ZIndex = 50
+    table.insert(cleanupList, Bg)
 
     -- Scrolling Hacker Code
     local CodeText = Drawing.new("Text")
@@ -25,6 +27,7 @@ return function(checks, callback)
     CodeText.Position = Vector2.new(Center.X - 200, Center.Y - 200)
     CodeText.Center = false
     CodeText.ZIndex = 51
+    table.insert(cleanupList, CodeText)
     
     -- Top Logo
     local ImageSize = Vector2.new(100, 100)
@@ -32,15 +35,31 @@ return function(checks, callback)
     Image.Size = ImageSize
     Image.Position = Vector2.new(Center.X - 50, Center.Y - 140)
     Image.ZIndex = 52
+    table.insert(cleanupList, Image)
 
-    -- Try to load the primary image, fallback if it fails
-    local success, err = pcall(function()
-        Image.Data = PrimaryImageURL
+    -- Safely attempt to load the image
+    task.spawn(function()
+        task.wait(0.1)
+        local success = pcall(function()
+            Image.Data = PrimaryImageURL
+        end)
+        
+        -- If the image fails, draw a giant purple "A" as a fallback
+        if not success then
+            Image.Visible = false
+            local FallbackLogo = Drawing.new("Text")
+            FallbackLogo.Font = Drawing.Fonts.Plex
+            FallbackLogo.Size = 80
+            FallbackLogo.Color = Color3.fromHex("#8A2BE2")
+            FallbackLogo.Text = "A"
+            FallbackLogo.Position = Vector2.new(Center.X, Center.Y - 120)
+            FallbackLogo.Center = true
+            FallbackLogo.Outline = true
+            FallbackLogo.OutlineColor = Color3.fromHex("#FFFFFF")
+            FallbackLogo.ZIndex = 52
+            table.insert(cleanupList, FallbackLogo)
+        end
     end)
-    if not success or not Image.Data then
-        warn("[Arceus X] Primary image failed to load. Using fallback.")
-        Image.Data = FallbackImageURL
-    end
 
     -- Title & Subtitle
     local Title = Drawing.new("Text")
@@ -51,6 +70,7 @@ return function(checks, callback)
     Title.Position = Vector2.new(Center.X, Center.Y + 10)
     Title.Center = true
     Title.ZIndex = 52
+    table.insert(cleanupList, Title)
 
     local Sub = Drawing.new("Text")
     Sub.Font = Drawing.Fonts.Plex
@@ -60,6 +80,7 @@ return function(checks, callback)
     Sub.Position = Vector2.new(Center.X, Center.Y + 55)
     Sub.Center = true
     Sub.ZIndex = 52
+    table.insert(cleanupList, Sub)
 
     -- Side Lines
     local LeftLine = Drawing.new("Square")
@@ -68,6 +89,7 @@ return function(checks, callback)
     LeftLine.Color = Color3.fromHex("#333333")
     LeftLine.Filled = true
     LeftLine.ZIndex = 52
+    table.insert(cleanupList, LeftLine)
 
     local RightLine = Drawing.new("Square")
     RightLine.Size = Vector2.new(80, 1)
@@ -75,6 +97,7 @@ return function(checks, callback)
     RightLine.Color = Color3.fromHex("#333333")
     RightLine.Filled = true
     RightLine.ZIndex = 52
+    table.insert(cleanupList, RightLine)
 
     -- Loading Bar & Percentage
     local BarBg = Drawing.new("Square")
@@ -83,6 +106,7 @@ return function(checks, callback)
     BarBg.Color = Color3.fromHex("#222222")
     BarBg.Filled = true
     BarBg.ZIndex = 52
+    table.insert(cleanupList, BarBg)
 
     local BarFill = Drawing.new("Square")
     BarFill.Size = Vector2.new(0, 2)
@@ -90,6 +114,7 @@ return function(checks, callback)
     BarFill.Color = Color3.fromHex("#FFFFFF")
     BarFill.Filled = true
     BarFill.ZIndex = 53
+    table.insert(cleanupList, BarFill)
 
     local PercentText = Drawing.new("Text")
     PercentText.Font = Drawing.Fonts.Plex
@@ -99,6 +124,7 @@ return function(checks, callback)
     PercentText.Position = Vector2.new(Center.X, Center.Y + 135)
     PercentText.Center = true
     PercentText.ZIndex = 52
+    table.insert(cleanupList, PercentText)
 
     local StatusText = Drawing.new("Text")
     StatusText.Font = Drawing.Fonts.Plex
@@ -108,6 +134,7 @@ return function(checks, callback)
     StatusText.Position = Vector2.new(Center.X, Center.Y + 100)
     StatusText.Center = true
     StatusText.ZIndex = 52
+    table.insert(cleanupList, StatusText)
 
     -- ACCESS GRANTED
     local AccessGranted = Drawing.new("Text")
@@ -121,8 +148,9 @@ return function(checks, callback)
     AccessGranted.OutlineColor = Color3.fromHex("#FFFFFF")
     AccessGranted.Transparency = 0
     AccessGranted.ZIndex = 60
+    table.insert(cleanupList, AccessGranted)
 
-    -- Fade In
+    -- Fade In sequence
     local elements = {Image, Title, Sub, LeftLine, RightLine, BarBg, BarFill, PercentText, StatusText}
     for _, obj in pairs(elements) do obj.Transparency = 1 end
     CodeText.Transparency = 1
@@ -133,7 +161,7 @@ return function(checks, callback)
         task.wait(0.01)
     end
 
-    -- Code Scrolling
+    -- Scrolling Code Animation
     local codeSnippet = [[
     int i;
     unsigned int count = group_info->ngroups;
@@ -154,15 +182,14 @@ return function(checks, callback)
     ]]
     
     local scrollY = 0
-    local renderConn
-    renderConn = RunService.RenderStepped:Connect(function(dt)
+    local renderConn = RunService.RenderStepped:Connect(function(dt)
         scrollY = scrollY + (dt * 30)
         if scrollY > 20 then scrollY = 0 end
         CodeText.Text = codeSnippet
         CodeText.Position = Vector2.new(Center.X - 200, Center.Y - 250 + scrollY)
     end)
 
-    -- Run Checks
+    -- Run Progress Checks
     task.spawn(function()
         for i, check in ipairs(checks) do
             StatusText.Text = check
@@ -180,17 +207,20 @@ return function(checks, callback)
         StatusText.Text = "Environment Secure."
         task.wait(0.5)
         
+        -- Fade out standard UI
         for _, obj in pairs(elements) do 
             task.spawn(function()
                 for i = 0, 1, 0.1 do
-                    obj.Transparency = i
+                    pcall(function() obj.Transparency = i end)
                     task.wait(0.02)
                 end
             end)
         end
+        
         if renderConn then renderConn:Disconnect() end
         CodeText:Remove()
         
+        -- Pop "ACCESS GRANTED"
         AccessGranted.Transparency = 0
         AccessGranted.Size = 30
         for i = 30, 40, 2 do
@@ -199,15 +229,18 @@ return function(checks, callback)
         end
         task.wait(0.8)
 
+        -- Fade out "ACCESS GRANTED"
         for i = 0, 1, 0.05 do
             AccessGranted.Transparency = i
             task.wait(0.02)
         end
 
-        Bg:Remove(); Image:Remove(); Title:Remove(); Sub:Remove()
-        LeftLine:Remove(); RightLine:Remove(); BarBg:Remove(); BarFill:Remove()
-        PercentText:Remove(); StatusText:Remove(); AccessGranted:Remove()
+        -- Final Cleanup
+        for _, obj in pairs(cleanupList) do
+            pcall(function() obj:Remove() end)
+        end
 
+        -- Trigger the UI
         if callback then callback() end
     end)
 end
