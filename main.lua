@@ -1,85 +1,58 @@
 -- main.lua
 local repoBase = "https://raw.githubusercontent.com/vornecc-pixel/Xovertonight/main/"
-local dim2 = UDim2.new 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local Stats = game:GetService("Stats")
 
-local checks = { 
-    "Verifying Environment...", 
-    "Bypassing Metatables...", 
-    "Injecting Drawing API...", 
-    "Cloaking Memory...", 
-    "Ready." 
-}
-
+-- 1. Loading Screen
+local checks = { "Verifying Environment...", "Bypassing Metatables...", "Injecting API...", "Cloaking Memory...", "Ready." }
 local showLoading = loadstring(game:HttpGet(repoBase .. "LoadingScreen.lua"))()
 
 showLoading(checks, function()
-    -- 1. Load Obelus UI
-    local library, notifications = loadstring(game:HttpGet("https://raw.githubusercontent.com/i77lhm/Libraries/refs/heads/main/Obelus/Library.lua"))()
+    -- 2. Load WindUI
+    local success, WindUI = pcall(function()
+        return loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
+    end)
+    if not success or not WindUI then return warn("WindUI failed to load.") end
     
-    library:updateTheme("accent", Color3.fromHex("#A855F7"))
+    -- 3. Apply Arceus X Theme
+    local ArceusTheme = {
+        Name = "ArceusX",
+        Accent = WindUI:Gradient({ ["0"] = {Color = Color3.fromHex("#6D28D9"), Transparency = 0}, ["100"] = {Color = Color3.fromHex("#A855F7"), Transparency = 0} }, {Rotation = 45}),
+        Dialog = Color3.fromHex("#150F23"),
+        Outline = Color3.fromHex("#8B5CF6"),
+        Text = Color3.fromHex("#F5F3FF"),
+        Placeholder = Color3.fromHex("#7C6A9A"),
+        Background = WindUI:Gradient({ ["0"] = {Color = Color3.fromHex("#0A0710"), Transparency = 0}, ["100"] = {Color = Color3.fromHex("#150F23"), Transparency = 0} }, {Rotation = 135}),
+        BackgroundTransparency = 0,
+        Button = WindUI:Gradient({ ["0"] = {Color = Color3.fromHex("#7C3AED"), Transparency = 0}, ["100"] = {Color = Color3.fromHex("#A855F7"), Transparency = 0} }, {Rotation = 45}),
+        Toggle = WindUI:Gradient({ ["0"] = {Color = Color3.fromHex("#6D28D9"), Transparency = 0}, ["100"] = {Color = Color3.fromHex("#A855F7"), Transparency = 0} }, {Rotation = 45}),
+        Slider = Color3.fromHex("#A855F7"),
+        ElementBackground = WindUI:Gradient({ ["0"] = {Color = Color3.fromHex("#16101F"), Transparency = 0}, ["100"] = {Color = Color3.fromHex("#1E1730"), Transparency = 0} }, {Rotation = 90}),
+        TabBackgroundActive = WindUI:Gradient({ ["0"] = {Color = Color3.fromHex("#2A1F42"), Transparency = 0.1}, ["100"] = {Color = Color3.fromHex("#3B2A5C"), Transparency = 0} }, {Rotation = 90}),
+    }
+    WindUI:AddTheme(ArceusTheme)
+    WindUI:SetTheme("ArceusX")
     
-    local window = library:window({
-        name = 'Arceus X | <font color="rgb(168,85,247)">Fust</font>',
-        size = dim2(0, 550, 0, 600)
+    -- 4. Create Window
+    local Window = WindUI:CreateWindow({
+        Title     = "Arceus X | Fust",
+        Author    = "Private",
+        Folder    = "ArceusX",
+        Size      = UDim2.fromOffset(600, 550),
+        Theme     = "ArceusX",
+        Transparent = true,
     })
     
-    -- Force UI over Roblox HUD
-    task.spawn(function()
-        task.wait(0.5)
-        local gui = (gethui and gethui() or game:GetService("CoreGui"))
-        for _, v in pairs(gui:GetDescendants()) do
-            if v:IsA("ScreenGui") and string.find(v.Name, "Obelus") then
-                v.DisplayOrder = 999999
-                pcall(function() v.Parent = gui end)
-            end
-        end
-    end)
-
-    -- ============================================================
-    -- CUSTOM TOGGLE SYSTEM (Like your old WindUI)
-    -- ============================================================
-    local menuOpen = true
-    local toggleKey = Enum.KeyCode.RightShift -- Default key
-
-    -- Initialize Mouse State
-    UserInputService.MouseIconEnabled = true
-    UserInputService.MouseBehavior = Enum.MouseBehavior.Default
-
-    -- We use this function to open/close the menu and handle the mouse
-    local function setMenuState(state)
-        menuOpen = state
-        if menuOpen then
-            UserInputService.MouseIconEnabled = true
-            UserInputService.MouseBehavior = Enum.MouseBehavior.Default
-            window:toggle_menu(true)
-        else
-            UserInputService.MouseIconEnabled = false
-            UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
-            window:toggle_menu(false)
-        end
-    end
-
-    -- Listen for the key press directly
-    local toggleConnection = UserInputService.InputBegan:Connect(function(input, gp)
-        if gp then return end
-        if input.KeyCode == toggleKey then
-            setMenuState(not menuOpen)
-        end
-    end)
-    -- ============================================================
-
-    -- 2. Load Mods
+    -- 5. Load Mods (Pass Window)
     local loadGunMods = loadstring(game:HttpGet(repoBase .. "GunMods.lua"))()
     local loadBowMods = loadstring(game:HttpGet(repoBase .. "BowMods.lua"))()
     
-    local unloadGunMods = loadGunMods(window, library)
-    local unloadBowMods = loadBowMods(window, library)
+    local unloadGunMods = loadGunMods(Window, WindUI)
+    local unloadBowMods = loadBowMods(Window, WindUI)
 
-    -- 3. Watermark System
+    -- 6. Watermark System
     local WatermarkEnabled = false
     local ShowFPS = true
     local ShowPing = true
@@ -107,83 +80,76 @@ showLoading(checks, function()
     end)
 
     task.spawn(function()
-        while wmRunning do
-            task.wait(1)
-            fpsCounter = 0
-        end
+        while wmRunning do task.wait(1); fpsCounter = 0 end
     end)
 
-    -- 4. Settings Tab
-    local Settings = window:tab({name = "Settings"})
-    local col1 = Settings:column({fill = true})
-    local col2 = Settings:column({fill = true})
-    
-    local configSec = col1:section({name = "Configs"})
-    local uiSec = col2:section({name = "UI Settings"})
-    local dangerSec = col2:section({name = "Danger Zone"})
+    -- 7. Settings Tab
+    local Settings = Window:Tab({ Title = "Settings", Icon = "settings" })
+    local configSec = Settings:Section({ Title = "Configs", Opened = true })
+    local uiSec = Settings:Section({ Title = "UI Settings", Opened = true })
+    local dangerSec = Settings:Section({ Title = "Danger Zone", Opened = true })
     
     if not isfolder("ArceusX") then makefolder("ArceusX") end
     if not isfolder("ArceusX/Configs") then makefolder("ArceusX/Configs") end
 
-    local config_holder = configSec:addList({name = "Configs", flag = "config_name_list", scale = 100})
-    configSec:addTextBox({name = "Config Name", default = "", flag = "config_name_text_box"})
+    -- Config System
+    local config_holder = configSec:Dropdown({ Title = "Config List", Values = {}, Callback = function() end })
     
-    configSec:addButton({name = "Create", callback = function()
-        if flags["config_name_text_box"] == "" then return end 
-        writefile("ArceusX/Configs/" .. flags["config_name_text_box"] .. ".cfg", library:getConfig())
-        library:configListUpdate()
-        notifications:create_notification({name = "Config Created."})
-    end})
-
-    configSec:addButton({name = "Delete", callback = function()
-        delfile("ArceusX/Configs/" .. flags["config_name_list"] .. ".cfg")
-        library:configListUpdate()
-        notifications:create_notification({name = "Config Deleted."})
-    end})
-
-    configSec:addButton({name = "Load", callback = function()
-        pcall(function()
-            library:loadConfig(readfile("ArceusX/Configs/" .. flags["config_name_list"] .. ".cfg"))
-            notifications:create_notification({name = "Config Loaded."})
-        end)
-    end})
-    
-    configSec:addButton({name = "Save", callback = function()
-        writefile("ArceusX/Configs/" .. flags["config_name_list"] .. ".cfg", library:getConfig())
-        notifications:create_notification({name = "Config Saved."})
-    end})
-
-    configSec:addButton({name = "Refresh Configs", callback = function()
-        library:configListUpdate()
-    end}); library:configListUpdate()
-
-    -- ============================================================
-    -- CUSTOM KEYBIND UI (Updates the toggleKey variable)
-    -- ============================================================
-    uiSec:addLabel({name = "Menu Toggle Keybind (Click to change)"}):addKeyBind({
-        flag = "UI_Toggle_Bind",
-        callback = function() end -- The Obelus callback fires when pressed. We don't use it, we read the flag directly.
-    })
-
-    -- When the user clicks the box and changes the key, update our variable
-    task.spawn(function()
-        while task.wait(0.5) do
-            if flags["UI_Toggle_Bind"] and typeof(flags["UI_Toggle_Bind"]) == "EnumItem" then
-                toggleKey = flags["UI_Toggle_Bind"]
+    local function updateConfigs()
+        local list = {}
+        if listfiles then
+            for _, file in pairs(listfiles("ArceusX/Configs")) do
+                table.insert(list, file:gsub(".cfg", ""))
             end
         end
-    end)
-    -- ============================================================
+        config_holder:Refresh(list)
+    end
+    updateConfigs()
 
-    uiSec:addToggle({name = "Watermark", flag = "UI_Watermark", callback = function(bool) WatermarkEnabled = bool end})
-    uiSec:addToggle({name = "Show FPS", default = true, flag = "UI_FPS", callback = function(bool) ShowFPS = bool end})
-    uiSec:addToggle({name = "Show Ping", default = true, flag = "UI_Ping", callback = function(bool) ShowPing = bool end})
+    configSec:Input({ Title = "Config Name", Value = "", Callback = function(txt) end })
+    
+    configSec:Button({ Title = "Create", Callback = function()
+        local name = configSec.Elements[2].Value -- gets the input text
+        if name == "" then return end
+        writefile("ArceusX/Configs/" .. name .. ".cfg", WindUI:GetConfig())
+        updateConfigs()
+        WindUI:Notify({ Title = "Config", Content = "Created " .. name, Duration = 3 })
+    end})
 
-    -- 5. Unload Everything
-    dangerSec:addButton({name = "Unload Everything", callback = function()
-        -- Disconnect keybind
-        if toggleConnection then toggleConnection:Disconnect() end
-        
+    configSec:Button({ Title = "Save", Callback = function()
+        writefile("ArceusX/Configs/" .. config_holder.Value .. ".cfg", WindUI:GetConfig())
+        WindUI:Notify({ Title = "Config", Content = "Saved.", Duration = 3 })
+    end})
+
+    configSec:Button({ Title = "Load", Callback = function()
+        pcall(function()
+            WindUI:LoadConfig(readfile("ArceusX/Configs/" .. config_holder.Value .. ".cfg"))
+            WindUI:Notify({ Title = "Config", Content = "Loaded.", Duration = 3 })
+        end)
+    end})
+
+    configSec:Button({ Title = "Delete", Callback = function()
+        delfile("ArceusX/Configs/" .. config_holder.Value .. ".cfg")
+        updateConfigs()
+        WindUI:Notify({ Title = "Config", Content = "Deleted.", Duration = 3 })
+    end})
+
+    -- UI Settings
+    -- WindUI natively handles the keybind and mouse locking!
+    uiSec:Keybind({ 
+        Title = "Menu Toggle", 
+        Value = Enum.KeyCode.RightShift, 
+        Callback = function(key) 
+            WindUI:SetToggleKey(key)
+        end 
+    })
+    
+    uiSec:Toggle({ Title = "Watermark", Value = false, Callback = function(bool) WatermarkEnabled = bool end })
+    uiSec:Toggle({ Title = "Show FPS", Value = true, Callback = function(bool) ShowFPS = bool end })
+    uiSec:Toggle({ Title = "Show Ping", Value = true, Callback = function(bool) ShowPing = bool end })
+
+    -- 8. Unload Everything
+    dangerSec:Button({ Title = "Unload Everything", Callback = function()
         wmRunning = false
         if wmConnection then wmConnection:Disconnect() end
         if Watermark then Watermark:Remove() end
@@ -191,23 +157,14 @@ showLoading(checks, function()
         if unloadGunMods then pcall(unloadGunMods) end
         if unloadBowMods then pcall(unloadBowMods) end
         
-        pcall(function() library:unloadMenu() end)
+        -- Destroy UI
+        if Window and Window.Destroy then Window:Destroy() end
         
-        local gui = (gethui and gethui() or game:GetService("CoreGui"))
-        for _, v in pairs(gui:GetDescendants()) do
-            if v:IsA("ScreenGui") and (string.find(v.Name, "Obelus") or v.Name == "ObelusUI") then
-                pcall(function() v:Destroy() end)
-            end
-        end
-        
+        -- Restore Mouse
         UserInputService.MouseIconEnabled = true
         UserInputService.MouseBehavior = Enum.MouseBehavior.Default
         
         getgenv().Library = nil
         getgenv().Utility = nil
-        
-        notifications:create_notification({name = "Successfully Unloaded Everything."})
     end})
-
-    notifications:create_notification({name = "Arceus X Loaded Successfully."})
 end)
