@@ -1,141 +1,210 @@
--- LoadingScreen.lua (Standard Splash)
-local TweenService = game:GetService("TweenService")
-local Players = game:GetService("Players")
-local LP = Players.LocalPlayer
-
-local C = {
-    bg0 = Color3.fromHex("#0A0710"), bg1 = Color3.fromHex("#150F23"),
-    purple = Color3.fromHex("#8B5CF6"), purpleDeep = Color3.fromHex("#6D28D9"),
-    purpleLight = Color3.fromHex("#A855F7"), purpleSoft = Color3.fromHex("#C4B5FD"),
-    cyan = Color3.fromHex("#06B6D4"), text = Color3.fromHex("#F5F3FF"),
-}
-
-local function showLoading(checks, onDone)
-    checks = checks or {"initializing engine...","verifying signature...","loading modules...","ready."}
-    local parent = (gethui and gethui()) or LP:WaitForChild("PlayerGui")
+-- LoadingScreen.lua
+return function(checks, callback)
+    local RunService = game:GetService("RunService")
+    local Camera = workspace.CurrentCamera
+    local Center = Camera.ViewportSize / 2
     
-    local sg = Instance.new("ScreenGui")
-    sg.Name = "AX_Loading"; sg.IgnoreGuiInset = true; sg.ResetOnSpawn = false; sg.DisplayOrder = 999
-    sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    sg.Parent = parent
+    -- Replace with your Direct Imgur link
+    local ImageURL = "https://i.imgur.com/AGsU7mR.png" 
 
-    local bg = Instance.new("Frame")
-    bg.Size = UDim2.fromScale(1, 1); bg.BackgroundColor3 = C.bg0; bg.BorderSizePixel = 0; bg.Parent = sg
-    local g = Instance.new("UIGradient"); g.Color = ColorSequence.new(C.bg1, C.bg0); g.Rotation = 135; g.Parent = bg
+    -- 1. Deep Black Background
+    local Bg = Drawing.new("Square")
+    Bg.Size = Vector2.new(Camera.ViewportSize.X, Camera.ViewportSize.Y)
+    Bg.Color = Color3.fromHex("#050505")
+    Bg.Filled = true
+    Bg.ZIndex = 50
 
-    local stage = Instance.new("Frame")
-    stage.Size = UDim2.fromOffset(320, 480); stage.Position = UDim2.fromScale(0.5, 0.5); stage.AnchorPoint = Vector2.new(0.5, 0.5); stage.BackgroundTransparency = 1; stage.Parent = sg
+    -- 2. Scrolling Hacker Code (Image 2 style)
+    local CodeText = Drawing.new("Text")
+    CodeText.Font = Drawing.Fonts.Code
+    CodeText.Size = 12
+    CodeText.Color = Color3.fromHex("#00FF00") -- Terminal Green
+    CodeText.Text = ""
+    CodeText.Position = Vector2.new(Center.X - 200, Center.Y - 200)
+    CodeText.Center = false
+    CodeText.ZIndex = 51
+    
+    -- 3. Top Logo
+    local ImageSize = Vector2.new(100, 100)
+    local Image = Drawing.new("Image")
+    Image.Size = ImageSize
+    Image.Position = Vector2.new(Center.X - 50, Center.Y - 140)
+    Image.Data = ImageURL
+    Image.ZIndex = 52
 
-    -- Glow
-    local glow = Instance.new("Frame")
-    glow.Size = UDim2.fromOffset(180, 180); glow.Position = UDim2.fromScale(0.5, 0.32); glow.AnchorPoint = Vector2.new(0.5, 0.5)
-    glow.BackgroundColor3 = C.purple; glow.BackgroundTransparency = 0.85; glow.BorderSizePixel = 0; glow.Parent = stage
-    local gc = Instance.new("UICorner"); gc.CornerRadius = UDim.new(1, 0); gc.Parent = glow
-    local gg = Instance.new("UIGradient"); gg.Color = ColorSequence.new(C.purple, C.cyan); gg.Rotation = 45; gg.Parent = glow
+    -- 4. Title & Subtitle (Like "DUALITY / TWO SIDES. ONE GAME.")
+    local Title = Drawing.new("Text")
+    Title.Font = Drawing.Fonts.Plex
+    Title.Size = 36
+    Title.Color = Color3.fromHex("#FFFFFF")
+    Title.Text = "ARCEUS X"
+    Title.Position = Vector2.new(Center.X, Center.Y + 10)
+    Title.Center = true
+    Title.ZIndex = 52
 
-    -- Rotating X
-    local mark = Instance.new("Frame")
-    mark.Size = UDim2.fromOffset(120, 120); mark.Position = UDim2.fromScale(0.5, 0.32); mark.AnchorPoint = Vector2.new(0.5, 0.5); mark.BackgroundTransparency = 1; mark.Parent = stage
-    for _, rot in ipairs({45, -45}) do
-        local bar = Instance.new("Frame")
-        bar.Size = UDim2.fromOffset(16, 110); bar.Position = UDim2.fromScale(0.5, 0.5); bar.AnchorPoint = Vector2.new(0.5, 0.5); bar.Rotation = rot; bar.BorderSizePixel = 0; bar.Parent = mark
-        local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 6); c.Parent = bar
-        local bgd = Instance.new("UIGradient"); bgd.Color = ColorSequence.new(C.purpleLight, C.cyan); bgd.Rotation = 90; bgd.Parent = bar
+    local Sub = Drawing.new("Text")
+    Sub.Font = Drawing.Fonts.Plex
+    Sub.Size = 14
+    Sub.Color = Color3.fromHex("#8888A0")
+    Sub.Text = "UNDETECTED · UNDISPUTED"
+    Sub.Position = Vector2.new(Center.X, Center.Y + 55)
+    Sub.Center = true
+    Sub.ZIndex = 52
+
+    -- 5. Side Lines (From Image 1)
+    local LeftLine = Drawing.new("Square")
+    LeftLine.Size = Vector2.new(80, 1)
+    LeftLine.Position = Vector2.new(Center.X - 200, Center.Y + 70)
+    LeftLine.Color = Color3.fromHex("#333333")
+    LeftLine.Filled = true
+    LeftLine.ZIndex = 52
+
+    local RightLine = Drawing.new("Square")
+    RightLine.Size = Vector2.new(80, 1)
+    RightLine.Position = Vector2.new(Center.X + 120, Center.Y + 70)
+    RightLine.Color = Color3.fromHex("#333333")
+    RightLine.Filled = true
+    RightLine.ZIndex = 52
+
+    -- 6. Loading Bar & Percentage
+    local BarBg = Drawing.new("Square")
+    BarBg.Size = Vector2.new(300, 2)
+    BarBg.Position = Vector2.new(Center.X - 150, Center.Y + 120)
+    BarBg.Color = Color3.fromHex("#222222")
+    BarBg.Filled = true
+    BarBg.ZIndex = 52
+
+    local BarFill = Drawing.new("Square")
+    BarFill.Size = Vector2.new(0, 2)
+    BarFill.Position = Vector2.new(Center.X - 150, Center.Y + 120)
+    BarFill.Color = Color3.fromHex("#FFFFFF") -- White fill like Duality
+    BarFill.Filled = true
+    BarFill.ZIndex = 53
+
+    local PercentText = Drawing.new("Text")
+    PercentText.Font = Drawing.Fonts.Plex
+    PercentText.Size = 12
+    PercentText.Color = Color3.fromHex("#FFFFFF")
+    PercentText.Text = "0%"
+    PercentText.Position = Vector2.new(Center.X, Center.Y + 135)
+    PercentText.Center = true
+    PercentText.ZIndex = 52
+
+    local StatusText = Drawing.new("Text")
+    StatusText.Font = Drawing.Fonts.Plex
+    StatusText.Size = 12
+    StatusText.Color = Color3.fromHex("#8888A0")
+    StatusText.Text = "Initializing..."
+    StatusText.Position = Vector2.new(Center.X, Center.Y + 100)
+    StatusText.Center = true
+    StatusText.ZIndex = 52
+
+    -- 7. ACCESS GRANTED Text (Hidden initially)
+    local AccessGranted = Drawing.new("Text")
+    AccessGranted.Font = Drawing.Fonts.Plex
+    AccessGranted.Size = 40
+    AccessGranted.Color = Color3.fromHex("#8A2BE2") -- Arceus Purple
+    AccessGranted.Text = "ACCESS GRANTED"
+    AccessGranted.Position = Vector2.new(Center.X, Center.Y + 40)
+    AccessGranted.Center = true
+    AccessGranted.Outline = true
+    AccessGranted.OutlineColor = Color3.fromHex("#FFFFFF")
+    AccessGranted.Transparency = 0
+    AccessGranted.ZIndex = 60
+
+    -- Fade-in elements
+    local elements = {Image, Title, Sub, LeftLine, RightLine, BarBg, BarFill, PercentText, StatusText}
+    for _, obj in pairs(elements) do obj.Transparency = 1 end
+    CodeText.Transparency = 1
+    
+    for i = 1, 0, -0.05 do
+        for _, obj in pairs(elements) do obj.Transparency = i end
+        CodeText.Transparency = i * 0.7 -- Code is slightly dimmer
+        task.wait(0.01)
     end
 
-    -- Ring
-    local ring = Instance.new("Frame")
-    ring.Size = UDim2.fromOffset(160, 160); ring.Position = UDim2.fromScale(0.5, 0.32); ring.AnchorPoint = Vector2.new(0.5, 0.5); ring.BackgroundTransparency = 1; ring.Parent = stage
-    local rc = Instance.new("UICorner"); rc.CornerRadius = UDim.new(1, 0); rc.Parent = ring
-    local ringStroke = Instance.new("UIStroke"); ringStroke.Color = C.purple; ringStroke.Thickness = 2; ringStroke.Transparency = 0.4; ringStroke.Parent = ring
-    local rg = Instance.new("UIGradient"); rg.Color = ColorSequence.new({ColorSequenceKeypoint.new(0, C.purple), ColorSequenceKeypoint.new(0.5, Color3.new(0, 0, 0)), ColorSequenceKeypoint.new(1, C.cyan)})
-    rg.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.5, 1), NumberSequenceKeypoint.new(1, 0)}); rg.Parent = ringStroke
-
-    -- Brand Text
-    local brand = Instance.new("TextLabel")
-    brand.Size = UDim2.new(1, 0, 0, 40); brand.Position = UDim2.new(0, 0, 0.58, 0); brand.BackgroundTransparency = 1
-    brand.Text = "ARCEUS X"; brand.Font = Enum.Font.GothamBold; brand.TextSize = 34; brand.TextColor3 = C.text; brand.TextTransparency = 1; brand.Parent = stage
-    local bgrd = Instance.new("UIGradient"); bgrd.Color = ColorSequence.new(C.purpleLight, C.cyan); bgrd.Parent = brand
-
-    local sub = Instance.new("TextLabel")
-    sub.Size = UDim2.new(1, 0, 0, 20); sub.Position = UDim2.new(0, 0, 0.58, 42); sub.BackgroundTransparency = 1
-    sub.Text = "INITIALIZING"; sub.Font = Enum.Font.GothamMedium; sub.TextSize = 12; sub.TextColor3 = C.purpleSoft; sub.TextTransparency = 1; sub.Parent = stage
-
-    -- Check List
-    local list = Instance.new("Frame")
-    list.Size = UDim2.fromOffset(260, 120); list.Position = UDim2.new(0.5, 0, 0.58, 90); list.AnchorPoint = Vector2.new(0.5, 0); list.BackgroundTransparency = 1; list.Parent = stage
-    local ll = Instance.new("UIListLayout"); ll.Padding = UDim.new(0, 6); ll.SortOrder = Enum.SortOrder.LayoutOrder; ll.Parent = list
-
-    -- Progress Bar
-    local barBg = Instance.new("Frame")
-    barBg.Size = UDim2.fromOffset(260, 3); barBg.Position = UDim2.new(0.5, 0, 1, -60); barBg.AnchorPoint = Vector2.new(0.5, 0.5)
-    barBg.BackgroundColor3 = C.bg1; barBg.BorderSizePixel = 0; barBg.Parent = stage
-    local bc = Instance.new("UICorner"); bc.CornerRadius = UDim.new(1, 0); bc.Parent = barBg
-
-    local barFill = Instance.new("Frame")
-    barFill.Size = UDim2.fromScale(0, 1); barFill.BorderSizePixel = 0; barFill.Parent = barBg
-    local fc = Instance.new("UICorner"); fc.CornerRadius = UDim.new(1, 0); fc.Parent = barFill
-    local fg = Instance.new("UIGradient"); fg.Color = ColorSequence.new(C.purpleDeep, C.cyan); fg.Parent = barFill
-
-    -- Animations
-    TweenService:Create(brand, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {TextTransparency = 0}):Play()
-    task.wait(0.2)
-    TweenService:Create(sub, TweenInfo.new(0.5, Enum.EasingStyle.Quint), {TextTransparency = 0.3}):Play()
-
-    local alive = true
-    task.spawn(function()
-        while alive do
-            mark.Rotation = 0
-            local t = TweenService:Create(mark, TweenInfo.new(6, Enum.EasingStyle.Linear), {Rotation = 360})
-            t:Play(); t.Completed:Wait()
-        end
-    end)
-
-    task.spawn(function()
-        while alive do
-            local up = TweenService:Create(glow, TweenInfo.new(1.4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {BackgroundTransparency = 0.65, Size = UDim2.fromOffset(230, 230)})
-            up:Play(); up.Completed:Wait()
-            if not alive then break end
-            local down = TweenService:Create(glow, TweenInfo.new(1.4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {BackgroundTransparency = 0.85, Size = UDim2.fromOffset(180, 180)})
-            down:Play(); down.Completed:Wait()
-        end
+    -- Animation Loop for scrolling code
+    local codeSnippet = [[
+    int i;
+    unsigned int count = group_info->ngroups;
+    for (i = 0; i < group_info->nblocks; i++) {
+        unsigned int cp_count = min(NGROUPS_PER_BLOCK, count);
+        unsigned int len = cp_count * sizeof(*grouplist);
+        if (copy_from_user(group_info->blocks[i], grouplist, len))
+            return -EFAULT;
+        grouplist += NGROUPS_PER_BLOCK;
+        count -= cp_count;
+    }
+    return 0;
+    /* Env Verification */
+    bypass_ac.init(0x7FF);
+    hook_function(L"ntdll.dll", "NtQueryInformationProcess");
+    memory.protect(0xFFFFFFFF, PAGE_EXECUTE_READWRITE);
+    status = ACCESS_GRANTED;
+    ]]
+    
+    local scrollY = 0
+    local renderConn
+    renderConn = RunService.RenderStepped:Connect(function(dt)
+        scrollY = scrollY + (dt * 30)
+        if scrollY > 20 then scrollY = 0 end
+        CodeText.Text = string.rep("\n", 0) .. codeSnippet
+        CodeText.Position = Vector2.new(Center.X - 200, Center.Y - 250 + scrollY)
     end)
 
     -- Run Checks
-    for i, text in ipairs(checks) do
-        if not alive then break end
-        local row = Instance.new("Frame"); row.Size = UDim2.new(1, 0, 0, 20); row.BackgroundTransparency = 1; row.LayoutOrder = i; row.Parent = list
-        local dot = Instance.new("Frame"); dot.Size = UDim2.fromOffset(8, 8); dot.Position = UDim2.new(0, 0, 0.5, 0); dot.AnchorPoint = Vector2.new(0, 0.5); dot.BackgroundColor3 = C.purple; dot.BorderSizePixel = 0; dot.BackgroundTransparency = 1; dot.Parent = row
-        local dc = Instance.new("UICorner"); dc.CornerRadius = UDim.new(1, 0); dc.Parent = dot
-        local label = Instance.new("TextLabel"); label.Size = UDim2.new(1, -20, 1, 0); label.Position = UDim2.new(0, 20, 0, 0); label.BackgroundTransparency = 1; label.Text = text; label.Font = Enum.Font.GothamMedium; label.TextSize = 13; label.TextColor3 = C.purpleSoft; label.TextXAlignment = Enum.TextXAlignment.Left; label.TextTransparency = 1; label.Parent = row
-        
-        TweenService:Create(dot, TweenInfo.new(0.15), {BackgroundTransparency = 0}):Play()
-        TweenService:Create(label, TweenInfo.new(0.2), {TextTransparency = 0.3}):Play()
-        TweenService:Create(barFill, TweenInfo.new(0.3, Enum.EasingStyle.Quint), {Size = UDim2.fromScale(i / #checks, 1)}):Play()
-        task.wait(0.35)
-    end
-
-    task.wait(0.4)
-    sub.Text = "READY"
-    TweenService:Create(sub, TweenInfo.new(0.2), {TextTransparency = 0}):Play()
-    task.wait(0.35)
-
-    -- Fade Out
-    alive = false
-    TweenService:Create(bg, TweenInfo.new(0.5), {BackgroundTransparency = 1}):Play()
-    for _, desc in ipairs(stage:GetDescendants()) do
-        if desc:IsA("TextLabel") then
-            TweenService:Create(desc, TweenInfo.new(0.3), {TextTransparency = 1}):Play()
-        elseif desc:IsA("Frame") then
-            TweenService:Create(desc, TweenInfo.new(0.4), {BackgroundTransparency = 1}):Play()
-        elseif desc:IsA("UIStroke") then
-            TweenService:Create(desc, TweenInfo.new(0.4), {Transparency = 1}):Play()
+    task.spawn(function()
+        for i, check in ipairs(checks) do
+            StatusText.Text = check
+            local targetWidth = (i / #checks) * 300
+            
+            -- Animate Bar
+            for step = 1, 20 do
+                local currentWidth = BarFill.Size.X
+                local newWidth = currentWidth + ((targetWidth - currentWidth) / 3)
+                BarFill.Size = Vector2.new(newWidth, 2)
+                PercentText.Text = tostring(math.floor((newWidth / 300) * 100)) .. "%"
+                task.wait(0.03)
+            end
+            task.wait(0.2)
         end
-    end
 
-    task.wait(0.6)
-    sg:Destroy()
-    if onDone then onDone() end
+        -- SUCCESS SEQUENCE
+        StatusText.Text = "Environment Secure."
+        task.wait(0.5)
+        
+        -- Hide standard elements, show ACCESS GRANTED
+        for _, obj in pairs(elements) do 
+            task.spawn(function()
+                for i = 0, 1, 0.1 do
+                    obj.Transparency = i
+                    task.wait(0.02)
+                end
+            end)
+        end
+        if renderConn then renderConn:Disconnect() end
+        CodeText:Remove()
+        
+        AccessGranted.Transparency = 0
+        AccessGranted.Size = 30
+        for i = 30, 40, 2 do
+            AccessGranted.Size = i
+            task.wait(0.01)
+        end
+        task.wait(0.8) -- Hold "ACCESS GRANTED"
+
+        -- FADE OUT EVERYTHING
+        for i = 0, 1, 0.05 do
+            AccessGranted.Transparency = i
+            task.wait(0.02)
+        end
+
+        -- Cleanup
+        Bg:Remove(); Image:Remove(); Title:Remove(); Sub:Remove()
+        LeftLine:Remove(); RightLine:Remove(); BarBg:Remove(); BarFill:Remove()
+        PercentText:Remove(); StatusText:Remove(); AccessGranted:Remove()
+
+        -- Trigger UI
+        if callback then callback() end
+    end)
 end
-
-return showLoading
