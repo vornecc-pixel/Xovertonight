@@ -3,6 +3,7 @@ return function(Window, Library)
     local RunService = game:GetService("RunService")
     local newcclosure = (type(newcclosure) == "function") and newcclosure or function(f) return f end
 
+    -- AC METATABLE PROTECTION
     local safeGetGC = newcclosure(getgc)
     local safeSetReadonly = newcclosure(setreadonly)
     local safeRawSet = newcclosure(rawset)
@@ -57,19 +58,23 @@ return function(Window, Library)
         for _, tbl in ipairs(toRemove) do tracked[tbl] = nil end
     end
 
+    -- LAG-FREE SCANNER
     task.spawn(function()
         while isRunning do
-            task.wait(1)
+            task.wait(2)
             local need = Mods.Enabled or Universal.InfiniteAmmo or Universal.NoAirBlock
             if isRunning and need and safeGetGC then
                 local foundBows, foundXBows, foundAmmo = {}, {}, {}
+                local count = 0
                 
                 for _, tbl in pairs(safeGetGC(true)) do
                     if type(tbl) == "table" then
-                        pcall(safeSetReadonly, tbl, false)
+                        count = count + 1
+                        if count % 1000 == 0 then task.wait() end
                         
                         if Mods.Enabled and safeRawGet(tbl, "DRAW_TIME") and safeRawGet(tbl, "SHOT_GAP") then
                             if Mods.NoCooldown then
+                                pcall(safeSetReadonly, tbl, false)
                                 for _, p in ipairs(cooldownProps) do track(tbl, p) end
                                 safeRawSet(tbl, "SHOT_GAP", 0); safeRawSet(tbl, "REDRAW_GAP", 0); safeRawSet(tbl, "MIN_DRAW", 0)
                             end
@@ -84,6 +89,7 @@ return function(Window, Library)
                         end
                         
                         if Mods.Enabled and Mods.NoRecoil and safeRawGet(tbl, "TREMBLE_MAX") then
+                            pcall(safeSetReadonly, tbl, false)
                             for _, p in ipairs(trembleProps) do track(tbl, p) end
                             safeRawSet(tbl, "TREMBLE_MAX", 0); safeRawSet(tbl, "TREMBLE_AFTER", 9999); safeRawSet(tbl, "SWAY", 0); safeRawSet(tbl, "SWAY_MAX", 0)
                         end
@@ -129,7 +135,7 @@ return function(Window, Library)
 
     task.spawn(function()
         while isRunning do
-            task.wait(1)
+            task.wait(2)
             if isRunning and not bowSpecTable and safeGetGC then
                 for _, v in pairs(safeGetGC(true)) do
                     if type(v) == "table" and safeRawGet(v, "BowSpec") and safeRawGet(v, "Get") then
@@ -182,13 +188,11 @@ return function(Window, Library)
         Mods.Enabled = s
         if not s then
             Mods.InstantDraw = false; Mods.InstantReload = false; Mods.NoCooldown = false; Mods.NoRecoil = false; Mods.NoDrop = false
-            
             if uiToggles.Draw and uiToggles.Draw.Set then uiToggles.Draw:Set(false) end
             if uiToggles.Reload and uiToggles.Reload.Set then uiToggles.Reload:Set(false) end
             if uiToggles.Cooldown and uiToggles.Cooldown.Set then uiToggles.Cooldown:Set(false) end
             if uiToggles.Recoil and uiToggles.Recoil.Set then uiToggles.Recoil:Set(false) end
             if uiToggles.Drop and uiToggles.Drop.Set then uiToggles.Drop:Set(false) end
-            
             revertProperties(allProps)
         end
     end})
@@ -202,21 +206,14 @@ return function(Window, Library)
     UniversalSec:addToggle({name = "Infinite Ammo", flag = "U_InfAmmo", callback = function(s) Universal.InfiniteAmmo = s end})
     UniversalSec:addToggle({name = "No Air Block", flag = "U_NoAirBlock", callback = function(s) Universal.NoAirBlock = s end})
 
-    -- Return the unload function for main.lua
     return function()
         isRunning = false
-        for _, conn in ipairs(connections) do
-            pcall(function() conn:Disconnect() end)
-        end
+        for _, conn in ipairs(connections) do pcall(function() conn:Disconnect() end) end
         revertProperties(allProps)
-        
-        -- Restore original BowSpec if we patched it
         if bowSpecTable and originalBowSpec then
             pcall(safeSetReadonly, bowSpecTable, false)
             pcall(safeRawSet, bowSpecTable, "BowSpec", originalBowSpec)
         end
-
-        -- Restore u16 blocked function if we patched it
         if u16Table and u16Blocked then
             pcall(safeSetReadonly, u16Table, false)
             pcall(safeRawSet, u16Table, "blocked", u16Blocked)
