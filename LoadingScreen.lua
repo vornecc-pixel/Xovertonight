@@ -4,35 +4,45 @@ return function(checks, callback)
     local Camera = workspace.CurrentCamera
     local Center = Camera.ViewportSize / 2
     
-    -- Replace with your Direct Imgur link
-    local ImageURL = "https://i.imgur.com/AGsU7mR.png" 
+    -- Your Discord Image Link
+    local PrimaryImageURL = "https://cdn.discordapp.com/attachments/1566746103393685557/1566746494663401573/Logo-svg-e1661869205382.png"
+    -- Fallback (Roblox Asset - Guaranteed to work)
+    local FallbackImageURL = "rbxassetid://11418604619"
 
-    -- 1. Deep Black Background
+    -- Deep Black Background
     local Bg = Drawing.new("Square")
     Bg.Size = Vector2.new(Camera.ViewportSize.X, Camera.ViewportSize.Y)
     Bg.Color = Color3.fromHex("#050505")
     Bg.Filled = true
     Bg.ZIndex = 50
 
-    -- 2. Scrolling Hacker Code (Image 2 style)
+    -- Scrolling Hacker Code
     local CodeText = Drawing.new("Text")
     CodeText.Font = Drawing.Fonts.Code
     CodeText.Size = 12
-    CodeText.Color = Color3.fromHex("#00FF00") -- Terminal Green
+    CodeText.Color = Color3.fromHex("#00FF00")
     CodeText.Text = ""
     CodeText.Position = Vector2.new(Center.X - 200, Center.Y - 200)
     CodeText.Center = false
     CodeText.ZIndex = 51
     
-    -- 3. Top Logo
+    -- Top Logo
     local ImageSize = Vector2.new(100, 100)
     local Image = Drawing.new("Image")
     Image.Size = ImageSize
     Image.Position = Vector2.new(Center.X - 50, Center.Y - 140)
-    Image.Data = ImageURL
     Image.ZIndex = 52
 
-    -- 4. Title & Subtitle (Like "DUALITY / TWO SIDES. ONE GAME.")
+    -- Try to load the primary image, fallback if it fails
+    local success, err = pcall(function()
+        Image.Data = PrimaryImageURL
+    end)
+    if not success or not Image.Data then
+        warn("[Arceus X] Primary image failed to load. Using fallback.")
+        Image.Data = FallbackImageURL
+    end
+
+    -- Title & Subtitle
     local Title = Drawing.new("Text")
     Title.Font = Drawing.Fonts.Plex
     Title.Size = 36
@@ -51,7 +61,7 @@ return function(checks, callback)
     Sub.Center = true
     Sub.ZIndex = 52
 
-    -- 5. Side Lines (From Image 1)
+    -- Side Lines
     local LeftLine = Drawing.new("Square")
     LeftLine.Size = Vector2.new(80, 1)
     LeftLine.Position = Vector2.new(Center.X - 200, Center.Y + 70)
@@ -66,7 +76,7 @@ return function(checks, callback)
     RightLine.Filled = true
     RightLine.ZIndex = 52
 
-    -- 6. Loading Bar & Percentage
+    -- Loading Bar & Percentage
     local BarBg = Drawing.new("Square")
     BarBg.Size = Vector2.new(300, 2)
     BarBg.Position = Vector2.new(Center.X - 150, Center.Y + 120)
@@ -77,7 +87,7 @@ return function(checks, callback)
     local BarFill = Drawing.new("Square")
     BarFill.Size = Vector2.new(0, 2)
     BarFill.Position = Vector2.new(Center.X - 150, Center.Y + 120)
-    BarFill.Color = Color3.fromHex("#FFFFFF") -- White fill like Duality
+    BarFill.Color = Color3.fromHex("#FFFFFF")
     BarFill.Filled = true
     BarFill.ZIndex = 53
 
@@ -99,11 +109,11 @@ return function(checks, callback)
     StatusText.Center = true
     StatusText.ZIndex = 52
 
-    -- 7. ACCESS GRANTED Text (Hidden initially)
+    -- ACCESS GRANTED
     local AccessGranted = Drawing.new("Text")
     AccessGranted.Font = Drawing.Fonts.Plex
     AccessGranted.Size = 40
-    AccessGranted.Color = Color3.fromHex("#8A2BE2") -- Arceus Purple
+    AccessGranted.Color = Color3.fromHex("#8A2BE2")
     AccessGranted.Text = "ACCESS GRANTED"
     AccessGranted.Position = Vector2.new(Center.X, Center.Y + 40)
     AccessGranted.Center = true
@@ -112,18 +122,18 @@ return function(checks, callback)
     AccessGranted.Transparency = 0
     AccessGranted.ZIndex = 60
 
-    -- Fade-in elements
+    -- Fade In
     local elements = {Image, Title, Sub, LeftLine, RightLine, BarBg, BarFill, PercentText, StatusText}
     for _, obj in pairs(elements) do obj.Transparency = 1 end
     CodeText.Transparency = 1
     
     for i = 1, 0, -0.05 do
         for _, obj in pairs(elements) do obj.Transparency = i end
-        CodeText.Transparency = i * 0.7 -- Code is slightly dimmer
+        CodeText.Transparency = i * 0.7
         task.wait(0.01)
     end
 
-    -- Animation Loop for scrolling code
+    -- Code Scrolling
     local codeSnippet = [[
     int i;
     unsigned int count = group_info->ngroups;
@@ -148,7 +158,7 @@ return function(checks, callback)
     renderConn = RunService.RenderStepped:Connect(function(dt)
         scrollY = scrollY + (dt * 30)
         if scrollY > 20 then scrollY = 0 end
-        CodeText.Text = string.rep("\n", 0) .. codeSnippet
+        CodeText.Text = codeSnippet
         CodeText.Position = Vector2.new(Center.X - 200, Center.Y - 250 + scrollY)
     end)
 
@@ -157,8 +167,6 @@ return function(checks, callback)
         for i, check in ipairs(checks) do
             StatusText.Text = check
             local targetWidth = (i / #checks) * 300
-            
-            -- Animate Bar
             for step = 1, 20 do
                 local currentWidth = BarFill.Size.X
                 local newWidth = currentWidth + ((targetWidth - currentWidth) / 3)
@@ -169,11 +177,9 @@ return function(checks, callback)
             task.wait(0.2)
         end
 
-        -- SUCCESS SEQUENCE
         StatusText.Text = "Environment Secure."
         task.wait(0.5)
         
-        -- Hide standard elements, show ACCESS GRANTED
         for _, obj in pairs(elements) do 
             task.spawn(function()
                 for i = 0, 1, 0.1 do
@@ -191,20 +197,17 @@ return function(checks, callback)
             AccessGranted.Size = i
             task.wait(0.01)
         end
-        task.wait(0.8) -- Hold "ACCESS GRANTED"
+        task.wait(0.8)
 
-        -- FADE OUT EVERYTHING
         for i = 0, 1, 0.05 do
             AccessGranted.Transparency = i
             task.wait(0.02)
         end
 
-        -- Cleanup
         Bg:Remove(); Image:Remove(); Title:Remove(); Sub:Remove()
         LeftLine:Remove(); RightLine:Remove(); BarBg:Remove(); BarFill:Remove()
         PercentText:Remove(); StatusText:Remove(); AccessGranted:Remove()
 
-        -- Trigger UI
         if callback then callback() end
     end)
 end
