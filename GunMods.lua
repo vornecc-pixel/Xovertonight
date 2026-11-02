@@ -127,7 +127,6 @@ return function(Window, WindUI)
         end
     end))
 
-    -- WindUI Syntax
     uiToggles.Master = MasterSec:Toggle({ Title = "Enable Gun Mods", Value = false, Callback = function(s) 
         Mods.Enabled = s
         if not s then
