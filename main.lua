@@ -20,16 +20,14 @@ showLoading(checks, function()
     -- 1. Load Obelus UI
     local library, notifications = loadstring(game:HttpGet("https://raw.githubusercontent.com/i77lhm/Libraries/refs/heads/main/Obelus/Library.lua"))()
     
-    -- Apply Arceus X Purple Theme
     library:updateTheme("accent", Color3.fromHex("#A855F7"))
     
-    -- Create Window
     local window = library:window({
         name = 'Arceus X | <font color="rgb(168,85,247)">Fust</font>',
         size = dim2(0, 550, 0, 600)
     })
     
-    -- Fix UI Rendering Over Roblox HUD (Inventory/Crafting)
+    -- Force UI over Roblox HUD
     task.spawn(function()
         task.wait(0.5)
         local gui = (gethui and gethui() or game:GetService("CoreGui"))
@@ -41,41 +39,26 @@ showLoading(checks, function()
         end
     end)
 
-    -- ============================================================
-    -- FLAWLESS MOUSE & MENU TOGGLE SYSTEM
-    -- ============================================================
+    -- Mouse & Menu Toggle
     local menuOpen = true
-    
-    -- Save the original function
     local original_toggle = window.toggle_menu
-    
-    -- Override it to handle the mouse and state sync
     window.toggle_menu = function(self, state)
-        -- If no state is provided, flip the current state
         if state == nil then state = not menuOpen end
-        
-        -- Prevent spamming if the UI is currently animating
         if self.is_closing_menu then return end
-        
         menuOpen = state
         
         if state == true then
-            -- Menu Opening: Free the mouse
             UserInputService.MouseIconEnabled = true
             UserInputService.MouseBehavior = Enum.MouseBehavior.Default
         else
-            -- Menu Closing: Lock mouse to center (so you can aim/shoot)
             UserInputService.MouseIconEnabled = false
             UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
         end
-        
         return original_toggle(self, state)
     end
     
-    -- Initial startup state (Menu opens, mouse frees)
     UserInputService.MouseIconEnabled = true
     UserInputService.MouseBehavior = Enum.MouseBehavior.Default
-    -- ============================================================
 
     -- 2. Load Mods
     local loadGunMods = loadstring(game:HttpGet(repoBase .. "GunMods.lua"))()
@@ -84,7 +67,7 @@ showLoading(checks, function()
     local unloadGunMods = loadGunMods(window, library)
     local unloadBowMods = loadBowMods(window, library)
 
-    -- 3. Watermark / FPS / Ping System
+    -- 3. Watermark System
     local WatermarkEnabled = false
     local ShowFPS = true
     local ShowPing = true
@@ -101,19 +84,13 @@ showLoading(checks, function()
     local fpsCounter = 0
     local wmConnection = RunService.RenderStepped:Connect(function()
         if not wmRunning then return end
-        if not WatermarkEnabled then 
-            Watermark.Visible = false 
-            return 
-        end
+        if not WatermarkEnabled then Watermark.Visible = false return end
         Watermark.Visible = true
-        
         fpsCounter = fpsCounter + 1
         local ping = math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue())
-        
         local txt = "Arceus X | Fust"
         if ShowFPS then txt = txt .. " | FPS: " .. fpsCounter end
         if ShowPing then txt = txt .. " | Ping: " .. ping .. "ms" end
-        
         Watermark.Text = txt
     end)
 
@@ -124,7 +101,7 @@ showLoading(checks, function()
         end
     end)
 
-    -- 4. Settings Tab & Config System
+    -- 4. Settings Tab
     local Settings = window:tab({name = "Settings"})
     local col1 = Settings:column({fill = true})
     local col2 = Settings:column({fill = true})
@@ -168,34 +145,44 @@ showLoading(checks, function()
         library:configListUpdate()
     end}); library:configListUpdate()
 
-    -- 5. UI Settings (Customizable Keybind)
-    -- Click the keybind box in the UI to change it to ANY key you want!
     uiSec:addLabel({name = "Menu Toggle Keybind"}):addKeyBind({
         flag = "UI_Toggle_Bind",
-        callback = function() 
-            -- When the key is pressed, trigger our overridden toggle function
-            window:toggle_menu(not menuOpen)
-        end
+        callback = function() window:toggle_menu(not menuOpen) end
     })
     
     uiSec:addToggle({name = "Watermark", flag = "UI_Watermark", callback = function(bool) WatermarkEnabled = bool end})
     uiSec:addToggle({name = "Show FPS", default = true, flag = "UI_FPS", callback = function(bool) ShowFPS = bool end})
     uiSec:addToggle({name = "Show Ping", default = true, flag = "UI_Ping", callback = function(bool) ShowPing = bool end})
 
-    -- 6. Unload Everything
+    -- ============================================================
+    -- 6. BULLETPROOF UNLOAD EVERYTHING
+    -- ============================================================
     dangerSec:addButton({name = "Unload Everything", callback = function()
+        -- 1. Stop Watermark Loops
         wmRunning = false
         if wmConnection then wmConnection:Disconnect() end
         if Watermark then Watermark:Remove() end
 
-        if unloadGunMods then unloadGunMods() end
-        if unloadBowMods then unloadBowMods() end
+        -- 2. Unload Mods (Breaks loops & reverts memory)
+        if unloadGunMods then pcall(unloadGunMods) end
+        if unloadBowMods then pcall(unloadBowMods) end
         
-        library:unloadMenu()
+        -- 3. Unload UI Library
+        pcall(function() library:unloadMenu() end)
         
+        -- 4. Force Delete Remaining UI Elements
+        local gui = (gethui and gethui() or game:GetService("CoreGui"))
+        for _, v in pairs(gui:GetDescendants()) do
+            if v:IsA("ScreenGui") and (string.find(v.Name, "Obelus") or v.Name == "ObelusUI") then
+                pcall(function() v:Destroy() end)
+            end
+        end
+        
+        -- 5. Restore Mouse
         UserInputService.MouseIconEnabled = true
         UserInputService.MouseBehavior = Enum.MouseBehavior.Default
         
+        -- 6. Clear Globals
         getgenv().Library = nil
         getgenv().Utility = nil
         
