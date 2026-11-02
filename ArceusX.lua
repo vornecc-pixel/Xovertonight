@@ -1,4 +1,5 @@
-local function MakeArceusTheme(WindUI)
+-- ArceusX.lua
+return function(WindUI)
     return {
         Name = "ArceusX",
         Accent = WindUI:Gradient({ ["0"] = {Color = Color3.fromHex("#6D28D9"), Transparency = 0}, ["100"] = {Color = Color3.fromHex("#A855F7"), Transparency = 0} }, {Rotation = 45}),
@@ -100,4 +101,3 @@ local function MakeArceusTheme(WindUI)
         ViewportBackgroundTransparency = 0,
     }
 end
-return MakeArceusTheme
