@@ -41,6 +41,32 @@ showLoading(checks, function()
         end
     end)
 
+    -- ============================================================
+    -- MOUSE FREE / LOCK FIX
+    -- ============================================================
+    -- Save the original toggle function
+    local original_toggle = window.toggle_menu
+    
+    -- Override it to handle the mouse state
+    window.toggle_menu = function(self, state)
+        if state == true then
+            -- Menu is Opening: Free the mouse
+            UserInputService.MouseIconEnabled = true
+            UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+        else
+            -- Menu is Closing: Lock the mouse to center (so you can aim)
+            UserInputService.MouseIconEnabled = false
+            UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
+        end
+        -- Call the original function to actually open/close the UI
+        return original_toggle(self, state)
+    end
+    
+    -- Set initial state (Menu starts open, so free the mouse)
+    UserInputService.MouseIconEnabled = true
+    UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+    -- ============================================================
+
     -- 2. Load Mods
     local loadGunMods = loadstring(game:HttpGet(repoBase .. "GunMods.lua"))()
     local loadBowMods = loadstring(game:HttpGet(repoBase .. "BowMods.lua"))()
@@ -136,7 +162,7 @@ showLoading(checks, function()
         flag = "UI_Toggle_Bind",
         callback = function(bool) 
             if window.is_closing_menu == false then enabled = not enabled end
-            window.toggle_menu(enabled)
+            window:toggle_menu(enabled) -- We call our patched function here
         end
     })
     
@@ -158,7 +184,9 @@ showLoading(checks, function()
         Watermark:Remove()
         getgenv().Library = nil
         getgenv().Utility = nil
-        game:GetService("UserInputService").MouseIconEnabled = true
+        -- Restore mouse to normal when unloading
+        UserInputService.MouseIconEnabled = true
+        UserInputService.MouseBehavior = Enum.MouseBehavior.Default
         notifications:create_notification({name = "Successfully Unloaded."})
     end})
 
