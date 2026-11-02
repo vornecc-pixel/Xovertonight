@@ -2,11 +2,9 @@
 local repoBase = "https://raw.githubusercontent.com/vornecc-pixel/Xovertonight/main/"
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local dim2 = UDim2.new 
 
--- 1. Load the Cinematic Splash
-local showLoading = loadstring(game:HttpGet(repoBase .. "LoadingScreen.lua"))()
-
--- 2. Define the checks (This simulates the hacker typing)
+-- 1. Define the hacker typing checks
 local checks = { 
     "Verifying Environment...", 
     "Bypassing Metatables...", 
@@ -15,60 +13,59 @@ local checks = {
     "Ready." 
 }
 
--- 3. Play the splash
+-- 2. Load the Cinematic Splash Screen
+local showLoading = loadstring(game:HttpGet(repoBase .. "LoadingScreen.lua"))()
+
+-- 3. Play the splash. When finished, run the callback.
 showLoading(checks, function()
     
-    -- 4. Load Abyss UI
-    local Library = loadstring(game:HttpGet("https://abyss.best/assets/files/gayasf.ui2?key=5y1lxXSfWKhlQkSqhUuFyB8kPp8hsCau"))()
+    -- 4. Load the Obelus UI Library
+    local library, notifications = loadstring(game:HttpGet("https://raw.githubusercontent.com/i77lhm/Libraries/refs/heads/main/Obelus/Library.lua"))()
     
-    -- 5. Apply Arceus X Theme
-    Library:UpdateTheme({
-        Accent = Color3.fromHex("#8A2BE2"),
-        Outline = Color3.fromHex("#000000"),
-        Inline = Color3.fromHex("#101018"),
-        LightContrast = Color3.fromHex("#202030"),
-        DarkContrast = Color3.fromHex("#080810"),
-        Text = Color3.fromHex("#FFFFFF"),
-        TextInactive = Color3.fromHex("#8888A0")
-    })
-    Library.Theme.Logo = Utility.AddImage("Abyss/Assets/UI/Arceus.png", "https://i.imgur.com/AGsU7mR.png")
+    -- 5. Apply Arceus X Theme (Purple Accent)
+    library:updateTheme("accent", Color3.fromHex("#A855F7"))
     
     -- 6. Create Main Window
-    local Window = Library.Window("Arceus X | Fust", Vector2.new(650, 600))
-    Window.Watermark("Arceus X | Private")
+    local window = library:window({
+        name = 'Arceus X | <font color="rgb(168,85,247)">Fust</font>',
+        size = dim2(0, 550, 0, 600)
+    })
     
-    -- 7. Load Mods (Pass Window to them)
+    -- 7. Load Mods from GitHub
     local loadGunMods = loadstring(game:HttpGet(repoBase .. "GunMods.lua"))()
     local loadBowMods = loadstring(game:HttpGet(repoBase .. "BowMods.lua"))()
-    loadGunMods(Window)
-    loadBowMods(Window)
+    
+    loadGunMods(window, library)
+    loadBowMods(window, library)
 
     -- 8. Configs / Unload Tab
-    local ConfigTab = Window:Tab("Configurations")
-    local DangerSec = ConfigTab:Section("Danger Zone", "Right")
-
-    DangerSec:Button({
-        Title = "Unload Everything",
-        Callback = function()
-            -- Smooth Fade Out
-            for _, val in pairs(Library.Drawings) do
-                if val[1] then
-                    task.spawn(function()
-                        for i = 0, 1, 0.1 do
-                            pcall(function() val[1].Transparency = i end)
-                            task.wait(0.02)
-                        end
-                    end)
-                end
-            end
-            
-            task.wait(0.8) -- Wait for fade
-            
-            -- Cleanup Globals
-            getgenv().Library = nil
-            getgenv().Utility = nil
-            
-            Library:SelfDestruct()
+    local Settings = window:tab({name = "Settings"})
+    local column = Settings:column({fill = true})
+    
+    local general = column:section({name = "Configs"})
+    general:addButton({name = "Unload Everything", callback = function()
+        -- Unload Menu
+        library:unloadMenu()
+        
+        -- Cleanup Globals (Anti-Cheat evasion)
+        getgenv().Library = nil
+        getgenv().Utility = nil
+        
+        -- Optional: Re-enable mouse if it was disabled
+        game:GetService("UserInputService").MouseIconEnabled = true
+        
+        notifications:create_notification({name = "Successfully Unloaded."})
+    end})
+    
+    -- Optional: Menu Toggle Keybind
+    local enabled = true
+    general:addLabel({name = "Menu Bind"}):addKeyBind({callback = function() 
+        if window.is_closing_menu == false then 
+            enabled = not enabled
         end
-    })
+        window.toggle_menu(enabled)
+    end})
+    
+    -- Success Notification
+    notifications:create_notification({name = "Arceus X Loaded Successfully."})
 end)
