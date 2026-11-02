@@ -40,12 +40,12 @@ showLoading(checks, function()
         Title     = "Arceus X | Fust",
         Author    = "Private",
         Folder    = "ArceusX",
-        Size      = UDim2.fromOffset(600, 550),
+        Size      = UDim2.fromOffset(580, 500),
         Theme     = "ArceusX",
         Transparent = true,
     })
     
-    -- 5. Load Mods (Pass Window)
+    -- 5. Load Mods
     local loadGunMods = loadstring(game:HttpGet(repoBase .. "GunMods.lua"))()
     local loadBowMods = loadstring(game:HttpGet(repoBase .. "BowMods.lua"))()
     
@@ -85,68 +85,63 @@ showLoading(checks, function()
 
     -- 7. Settings Tab
     local Settings = Window:Tab({ Title = "Settings", Icon = "settings" })
-    local configSec = Settings:Section({ Title = "Configs", Opened = true })
     local uiSec = Settings:Section({ Title = "UI Settings", Opened = true })
+    local configSec = Settings:Section({ Title = "Configs", Opened = true })
     local dangerSec = Settings:Section({ Title = "Danger Zone", Opened = true })
     
     if not isfolder("ArceusX") then makefolder("ArceusX") end
     if not isfolder("ArceusX/Configs") then makefolder("ArceusX/Configs") end
 
-    -- Config System
-    local config_holder = configSec:Dropdown({ Title = "Config List", Values = {}, Callback = function() end })
-    
-    local function updateConfigs()
-        local list = {}
-        if listfiles then
-            for _, file in pairs(listfiles("ArceusX/Configs")) do
-                table.insert(list, file:gsub(".cfg", ""))
-            end
-        end
-        config_holder:Refresh(list)
-    end
-    updateConfigs()
-
-    configSec:Input({ Title = "Config Name", Value = "", Callback = function(txt) end })
-    
-    configSec:Button({ Title = "Create", Callback = function()
-        local name = configSec.Elements[2].Value -- gets the input text
-        if name == "" then return end
-        writefile("ArceusX/Configs/" .. name .. ".cfg", WindUI:GetConfig())
-        updateConfigs()
-        WindUI:Notify({ Title = "Config", Content = "Created " .. name, Duration = 3 })
-    end})
-
-    configSec:Button({ Title = "Save", Callback = function()
-        writefile("ArceusX/Configs/" .. config_holder.Value .. ".cfg", WindUI:GetConfig())
-        WindUI:Notify({ Title = "Config", Content = "Saved.", Duration = 3 })
-    end})
-
-    configSec:Button({ Title = "Load", Callback = function()
-        pcall(function()
-            WindUI:LoadConfig(readfile("ArceusX/Configs/" .. config_holder.Value .. ".cfg"))
-            WindUI:Notify({ Title = "Config", Content = "Loaded.", Duration = 3 })
-        end)
-    end})
-
-    configSec:Button({ Title = "Delete", Callback = function()
-        delfile("ArceusX/Configs/" .. config_holder.Value .. ".cfg")
-        updateConfigs()
-        WindUI:Notify({ Title = "Config", Content = "Deleted.", Duration = 3 })
-    end})
-
-    -- UI Settings
-    -- WindUI natively handles the keybind and mouse locking!
+    -- WindUI Native Keybind (No more toggle bug!)
     uiSec:Keybind({ 
-        Title = "Menu Toggle", 
+        Title = "Menu Toggle Key", 
         Value = Enum.KeyCode.RightShift, 
         Callback = function(key) 
-            WindUI:SetToggleKey(key)
+            Window:SetToggleKey(key)
         end 
     })
     
     uiSec:Toggle({ Title = "Watermark", Value = false, Callback = function(bool) WatermarkEnabled = bool end })
     uiSec:Toggle({ Title = "Show FPS", Value = true, Callback = function(bool) ShowFPS = bool end })
     uiSec:Toggle({ Title = "Show Ping", Value = true, Callback = function(bool) ShowPing = bool end })
+
+    -- Configs
+    local configList = configSec:Dropdown({ Title = "Select Config", Values = {}, Callback = function() end })
+    
+    local function refreshConfigs()
+        local list = {}
+        if listfiles then
+            for _, file in pairs(listfiles("ArceusX/Configs")) do
+                table.insert(list, file:gsub(".cfg", ""))
+            end
+        end
+        configList:Refresh(list)
+    end
+    refreshConfigs()
+
+    configSec:Input({ Title = "Config Name", Value = "", Callback = function(txt) end })
+    
+    configSec:Button({ Title = "Create", Callback = function()
+        local name = configSec.Elements[2].Value
+        if name == "" then return end
+        writefile("ArceusX/Configs/" .. name .. ".cfg", WindUI:GetConfig())
+        refreshConfigs()
+    end})
+
+    configSec:Button({ Title = "Save", Callback = function()
+        writefile("ArceusX/Configs/" .. configList.Value .. ".cfg", WindUI:GetConfig())
+    end})
+
+    configSec:Button({ Title = "Load", Callback = function()
+        pcall(function()
+            WindUI:LoadConfig(readfile("ArceusX/Configs/" .. configList.Value .. ".cfg"))
+        end)
+    end})
+
+    configSec:Button({ Title = "Delete", Callback = function()
+        delfile("ArceusX/Configs/" .. configList.Value .. ".cfg")
+        refreshConfigs()
+    end})
 
     -- 8. Unload Everything
     dangerSec:Button({ Title = "Unload Everything", Callback = function()
@@ -157,10 +152,8 @@ showLoading(checks, function()
         if unloadGunMods then pcall(unloadGunMods) end
         if unloadBowMods then pcall(unloadBowMods) end
         
-        -- Destroy UI
         if Window and Window.Destroy then Window:Destroy() end
         
-        -- Restore Mouse
         UserInputService.MouseIconEnabled = true
         UserInputService.MouseBehavior = Enum.MouseBehavior.Default
         
