@@ -1,5 +1,5 @@
 -- GunMods.lua
-return function(Window, Library)
+return function(Window, WindUI)
     local RunService = game:GetService("RunService")
     
     -- AC METATABLE PROTECTION
@@ -8,25 +8,19 @@ return function(Window, Library)
     local safeRawSet = newcclosure(rawset)
     local safeRawGet = newcclosure(rawget)
 
-    local Tab = Window:tab({name = "Gun Mods"})
-    local col1 = Tab:column({fill = true})
-    local col2 = Tab:column({fill = true})
-    
-    local MasterSec = col1:section({name = "Master"})
-    local TimingSec = col1:section({name = "Timing"})
-    local SpreadSec = col1:section({name = "Spread & Rate"})
-    
-    local RecoilSec = col2:section({name = "Recoil & Bloom"})
-    local SwaySec = col2:section({name = "Sway"})
-    local KickSec = col2:section({name = "Kick"})
+    local Tab = Window:Tab({ Title = "Gun Mods", Icon = "crosshair" })
+    local MasterSec = Tab:Section({ Title = "Master", Opened = true })
+    local TimingSec = Tab:Section({ Title = "Timing", Opened = false })
+    local SpreadSec = Tab:Section({ Title = "Spread & Rate", Opened = false })
+    local RecoilSec = Tab:Section({ Title = "Recoil & Bloom", Opened = false })
+    local SwaySec = Tab:Section({ Title = "Sway", Opened = false })
     
     local Mods = {
         Enabled = false, InstantEquip = false, EquipTime = 0.001,
         InstantAds = false, AdsTime = 0.001, NoSpread = false,
         Rate = 0.05, ForceAuto = true, Spread = 0, AdsSpread = 0, MoveSpread = 0,
         NoRecoil = false, VisualBloom = 0, RecoilClimb = 0, ShakeMax = 0,
-        NoSway = false, Sway = 0, SwayMax = 0, BobWalk = 0, BobIdle = 0, Lean = 0,
-        KickPitch = 0, KickBack = 0
+        NoSway = false, Sway = 0, SwayMax = 0, BobWalk = 0, BobIdle = 0, Lean = 0
     }
     
     local activeStates, tracked = {}, {}
@@ -66,26 +60,21 @@ return function(Window, Library)
         for _, tbl in ipairs(toRemove) do tracked[tbl] = nil end
     end
 
-    -- LAG-FREE SCANNER
     task.spawn(function()
         while isRunning do
-            task.wait(2) -- Scans every 2 seconds instead of every 1 second to save CPU
+            task.wait(2)
             if isRunning and Mods.Enabled and safeGetGC then
                 local found = {}
                 local count = 0
-                
                 for _, tbl in pairs(safeGetGC(true)) do
                     if type(tbl) == "table" then
                         count = count + 1
-                        -- YIELD: Pause for 1 frame every 1000 tables to stop lag spikes
                         if count % 1000 == 0 then task.wait() end 
                         
-                        -- 1. Check if it's a gun state first (Fastest check)
                         if safeRawGet(tbl, "SpreadPx") ~= nil and safeRawGet(tbl, "equipAt") ~= nil then
                             table.insert(found, tbl)
                         end
 
-                        -- 2. Only unfreeze and modify if the specific keys exist
                         if Mods.InstantEquip or Mods.InstantAds then
                             for _, k in ipairs(timingProps) do
                                 if safeRawGet(tbl, k) ~= nil then
@@ -117,7 +106,7 @@ return function(Window, Library)
                         if Mods.NoSway and safeRawGet(tbl, "SWAY_MAX") ~= nil then
                             pcall(safeSetReadonly, tbl, false)
                             for _, p in ipairs(swayProps) do track(tbl, p) end
-                            safeRawSet(tbl, "KICK_PITCH", Mods.KickPitch); safeRawSet(tbl, "KICK_BACK", Mods.KickBack)
+                            safeRawSet(tbl, "KICK_PITCH", Mods.KickPitch or 0); safeRawSet(tbl, "KICK_BACK", Mods.KickBack or 0)
                             safeRawSet(tbl, "SWAY", Mods.Sway); safeRawSet(tbl, "SWAY_MAX", Mods.SwayMax)
                             safeRawSet(tbl, "BOB_WALK", Mods.BobWalk); safeRawSet(tbl, "BOB_IDLE", Mods.BobIdle); safeRawSet(tbl, "LEAN", Mods.Lean)
                         end
@@ -138,42 +127,40 @@ return function(Window, Library)
         end
     end))
 
-    uiToggles.Master = MasterSec:addToggle({name = "Enable Gun Mods", flag = "G_Enable", callback = function(s) 
+    -- WindUI Syntax
+    uiToggles.Master = MasterSec:Toggle({ Title = "Enable Gun Mods", Value = false, Callback = function(s) 
         Mods.Enabled = s
         if not s then
             Mods.NoSpread = false; Mods.NoRecoil = false; Mods.NoSway = false; Mods.InstantEquip = false; Mods.InstantAds = false
-            if uiToggles.Spread and uiToggles.Spread.Set then uiToggles.Spread:Set(false) end
-            if uiToggles.Recoil and uiToggles.Recoil.Set then uiToggles.Recoil:Set(false) end
-            if uiToggles.Sway and uiToggles.Sway.Set then uiToggles.Sway:Set(false) end
-            if uiToggles.InstEq and uiToggles.InstEq.Set then uiToggles.InstEq:Set(false) end
-            if uiToggles.InstAds and uiToggles.InstAds.Set then uiToggles.InstAds:Set(false) end
+            if uiToggles.Spread then uiToggles.Spread:Set(false) end
+            if uiToggles.Recoil then uiToggles.Recoil:Set(false) end
+            if uiToggles.Sway then uiToggles.Sway:Set(false) end
+            if uiToggles.InstEq then uiToggles.InstEq:Set(false) end
+            if uiToggles.InstAds then uiToggles.InstAds:Set(false) end
             revertProperties(allProps)
         end
     end})
     
-    uiToggles.InstEq = TimingSec:addToggle({name = "Instant Equip", flag = "G_InstEquip", callback = function(s) Mods.InstantEquip = s; if not s then revertProperties({"EQUIP_TIME", "HOLSTER_TIME"}) end end})
-    TimingSec:addSlider({name = "Equip Time", min = 0.001, max = 1, default = 0.001, interval = 0.001, showValue = true, flag = "G_EquipTime", callback = function(v) Mods.EquipTime = v end})
+    uiToggles.InstEq = TimingSec:Toggle({ Title = "Instant Equip", Value = false, Callback = function(s) Mods.InstantEquip = s; if not s then revertProperties({"EQUIP_TIME", "HOLSTER_TIME"}) end end})
+    TimingSec:Slider({ Title = "Equip Time", Value = { Min = 0.001, Max = 1, Default = 0.001 }, Step = 0.001, Callback = function(v) Mods.EquipTime = v end})
     
-    uiToggles.InstAds = TimingSec:addToggle({name = "Instant ADS", flag = "G_InstAds", callback = function(s) Mods.InstantAds = s; if not s then revertProperties({"AdsTime", "AdsOutTime", "adsTime"}) end end})
-    TimingSec:addSlider({name = "ADS Time", min = 0.001, max = 1, default = 0.001, interval = 0.001, showValue = true, flag = "G_AdsTime", callback = function(v) Mods.AdsTime = v end})
+    uiToggles.InstAds = TimingSec:Toggle({ Title = "Instant ADS", Value = false, Callback = function(s) Mods.InstantAds = s; if not s then revertProperties({"AdsTime", "AdsOutTime", "adsTime"}) end end})
+    TimingSec:Slider({ Title = "ADS Time", Value = { Min = 0.001, Max = 1, Default = 0.001 }, Step = 0.001, Callback = function(v) Mods.AdsTime = v end})
     
-    uiToggles.Spread = SpreadSec:addToggle({name = "No Spread", flag = "G_NoSpread", callback = function(s) Mods.NoSpread = s; if not s then revertProperties(spreadProps) end end})
-    SpreadSec:addSlider({name = "Fire Rate", min = 0.01, max = 1, default = 0.05, interval = 0.01, showValue = true, flag = "G_Rate", callback = function(v) Mods.Rate = v end})
-    SpreadSec:addToggle({name = "Force Auto", flag = "G_ForceAuto", default = true, callback = function(s) Mods.ForceAuto = s end})
-    SpreadSec:addSlider({name = "Spread", min = 0, max = 1, default = 0, interval = 0.01, showValue = true, flag = "G_Spread", callback = function(v) Mods.Spread = v end})
+    uiToggles.Spread = SpreadSec:Toggle({ Title = "No Spread", Value = false, Callback = function(s) Mods.NoSpread = s; if not s then revertProperties(spreadProps) end end})
+    SpreadSec:Slider({ Title = "Fire Rate", Value = { Min = 0.01, Max = 1, Default = 0.05 }, Step = 0.01, Callback = function(v) Mods.Rate = v end})
+    SpreadSec:Toggle({ Title = "Force Auto", Value = true, Callback = function(s) Mods.ForceAuto = s end})
+    SpreadSec:Slider({ Title = "Spread", Value = { Min = 0, Max = 1, Default = 0 }, Step = 0.01, Callback = function(v) Mods.Spread = v end})
     
-    uiToggles.Recoil = RecoilSec:addToggle({name = "No Recoil", flag = "G_NoRecoil", callback = function(s) Mods.NoRecoil = s; if not s then revertProperties(recoilProps) end end})
-    RecoilSec:addSlider({name = "Visual Bloom", min = 0, max = 1, default = 0, interval = 0.01, showValue = true, flag = "G_Bloom", callback = function(v) Mods.VisualBloom = v end})
-    RecoilSec:addSlider({name = "Recoil Climb", min = 0, max = 1, default = 0, interval = 0.01, showValue = true, flag = "G_Climb", callback = function(v) Mods.RecoilClimb = v end})
-    RecoilSec:addSlider({name = "Shake Max", min = 0, max = 1, default = 0, interval = 0.01, showValue = true, flag = "G_Shake", callback = function(v) Mods.ShakeMax = v end})
+    uiToggles.Recoil = RecoilSec:Toggle({ Title = "No Recoil", Value = false, Callback = function(s) Mods.NoRecoil = s; if not s then revertProperties(recoilProps) end end})
+    RecoilSec:Slider({ Title = "Visual Bloom", Value = { Min = 0, Max = 1, Default = 0 }, Step = 0.01, Callback = function(v) Mods.VisualBloom = v end})
+    RecoilSec:Slider({ Title = "Recoil Climb", Value = { Min = 0, Max = 1, Default = 0 }, Step = 0.01, Callback = function(v) Mods.RecoilClimb = v end})
+    RecoilSec:Slider({ Title = "Shake Max", Value = { Min = 0, Max = 1, Default = 0 }, Step = 0.01, Callback = function(v) Mods.ShakeMax = v end})
     
-    uiToggles.Sway = SwaySec:addToggle({name = "No Sway", flag = "G_NoSway", callback = function(s) Mods.NoSway = s; if not s then revertProperties(swayProps) end end})
-    SwaySec:addSlider({name = "Sway", min = 0, max = 1, default = 0, interval = 0.01, showValue = true, flag = "G_Sway", callback = function(v) Mods.Sway = v end})
-    SwaySec:addSlider({name = "Sway Max", min = 0, max = 1, default = 0, interval = 0.01, showValue = true, flag = "G_SwayMax", callback = function(v) Mods.SwayMax = v end})
-    SwaySec:addSlider({name = "Bob Walk", min = 0, max = 1, default = 0, interval = 0.01, showValue = true, flag = "G_BobWalk", callback = function(v) Mods.BobWalk = v end})
-    
-    KickSec:addSlider({name = "Kick Pitch", min = 0, max = 1, default = 0, interval = 0.01, showValue = true, flag = "G_KickPitch", callback = function(v) Mods.KickPitch = v end})
-    KickSec:addSlider({name = "Kick Back", min = 0, max = 1, default = 0, interval = 0.01, showValue = true, flag = "G_KickBack", callback = function(v) Mods.KickBack = v end})
+    uiToggles.Sway = SwaySec:Toggle({ Title = "No Sway", Value = false, Callback = function(s) Mods.NoSway = s; if not s then revertProperties(swayProps) end end})
+    SwaySec:Slider({ Title = "Sway", Value = { Min = 0, Max = 1, Default = 0 }, Step = 0.01, Callback = function(v) Mods.Sway = v end})
+    SwaySec:Slider({ Title = "Sway Max", Value = { Min = 0, Max = 1, Default = 0 }, Step = 0.01, Callback = function(v) Mods.SwayMax = v end})
+    SwaySec:Slider({ Title = "Bob Walk", Value = { Min = 0, Max = 1, Default = 0 }, Step = 0.01, Callback = function(v) Mods.BobWalk = v end})
 
     return function()
         isRunning = false
