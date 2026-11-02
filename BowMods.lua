@@ -20,26 +20,48 @@ return function(Window, Library)
     local Universal = { InfiniteAmmo = false, NoAirBlock = false }
 
     local activeBows, activeCrossbows, activeAmmo = {}, {}, {}
-    local u16Table, u16Blocked, u16Patched = nil, nil, false
     local tracked = {}
+    local uiToggles = {}
+    local isRunning = true
+    local connections = {}
+
+    local u16Table, u16Blocked, u16Patched = nil, nil, false
+    local bowSpecTable, originalBowSpec = nil, nil
+
+    local cooldownProps = {"SHOT_GAP", "REDRAW_GAP", "MIN_DRAW"}
+    local trembleProps = {"TREMBLE_MAX", "TREMBLE_AFTER", "SWAY", "SWAY_MAX"}
+    local allProps = {}
+    for _, list in ipairs({cooldownProps, trembleProps}) do
+        for _, p in ipairs(list) do table.insert(allProps, p) end
+    end
 
     local function track(tbl, key)
         if not tracked[tbl] then tracked[tbl] = {} end
         if tracked[tbl][key] == nil then tracked[tbl][key] = safeRawGet(tbl, key) end
     end
     
-    local function restoreAll()
+    local function revertProperties(props)
+        local toRemove = {}
         for tbl, keys in pairs(tracked) do
+            local empty = true
             pcall(safeSetReadonly, tbl, false)
-            for k, v in pairs(keys) do pcall(safeRawSet, tbl, k, v) end
+            for _, prop in ipairs(props) do
+                if keys[prop] ~= nil then
+                    pcall(safeRawSet, tbl, prop, keys[prop])
+                    keys[prop] = nil
+                end
+            end
+            for _ in pairs(keys) do empty = false break end
+            if empty then table.insert(toRemove, tbl) end
         end
-        table.clear(tracked)
+        for _, tbl in ipairs(toRemove) do tracked[tbl] = nil end
     end
 
     task.spawn(function()
-        while task.wait(1) do
+        while isRunning do
+            task.wait(1)
             local need = Mods.Enabled or Universal.InfiniteAmmo or Universal.NoAirBlock
-            if need and safeGetGC then
+            if isRunning and need and safeGetGC then
                 local foundBows, foundXBows, foundAmmo = {}, {}, {}
                 
                 for _, tbl in pairs(safeGetGC(true)) do
@@ -48,7 +70,7 @@ return function(Window, Library)
                         
                         if Mods.Enabled and safeRawGet(tbl, "DRAW_TIME") and safeRawGet(tbl, "SHOT_GAP") then
                             if Mods.NoCooldown then
-                                track(tbl, "SHOT_GAP"); track(tbl, "REDRAW_GAP"); track(tbl, "MIN_DRAW")
+                                for _, p in ipairs(cooldownProps) do track(tbl, p) end
                                 safeRawSet(tbl, "SHOT_GAP", 0); safeRawSet(tbl, "REDRAW_GAP", 0); safeRawSet(tbl, "MIN_DRAW", 0)
                             end
                         end
@@ -62,7 +84,7 @@ return function(Window, Library)
                         end
                         
                         if Mods.Enabled and Mods.NoRecoil and safeRawGet(tbl, "TREMBLE_MAX") then
-                            track(tbl, "TREMBLE_MAX"); track(tbl, "TREMBLE_AFTER"); track(tbl, "SWAY"); track(tbl, "SWAY_MAX")
+                            for _, p in ipairs(trembleProps) do track(tbl, p) end
                             safeRawSet(tbl, "TREMBLE_MAX", 0); safeRawSet(tbl, "TREMBLE_AFTER", 9999); safeRawSet(tbl, "SWAY", 0); safeRawSet(tbl, "SWAY_MAX", 0)
                         end
                         
@@ -101,22 +123,21 @@ return function(Window, Library)
                 end
 
                 activeBows, activeCrossbows, activeAmmo = foundBows, foundXBows, foundAmmo
-            else
-                if next(tracked) then restoreAll() end
             end
         end
     end)
 
-    local bowSpecPatched = false
     task.spawn(function()
-        while task.wait(1) do
-            if not bowSpecPatched and safeGetGC then
+        while isRunning do
+            task.wait(1)
+            if isRunning and not bowSpecTable and safeGetGC then
                 for _, v in pairs(safeGetGC(true)) do
                     if type(v) == "table" and safeRawGet(v, "BowSpec") and safeRawGet(v, "Get") then
                         pcall(safeSetReadonly, v, false)
-                        local oldBowSpec = safeRawGet(v, "BowSpec")
+                        bowSpecTable = v
+                        originalBowSpec = safeRawGet(v, "BowSpec")
                         safeRawSet(v, "BowSpec", function(def)
-                            local spec = oldBowSpec(def)
+                            local spec = originalBowSpec(def)
                             if Mods.Enabled and Mods.NoDrop and type(spec) == "table" then
                                 safeRawSet(spec, "gravity", 0)
                                 safeRawSet(spec, "speedBase", 600)
@@ -124,16 +145,15 @@ return function(Window, Library)
                             end
                             return spec
                         end)
-                        bowSpecPatched = true
-                        return
+                        break
                     end
                 end
             end
         end
     end)
 
-    RunService.RenderStepped:Connect(function()
-        if not Mods.Enabled then activeBows, activeCrossbows = {}, {} return end
+    table.insert(connections, RunService.RenderStepped:Connect(function()
+        if not isRunning or not Mods.Enabled then activeBows, activeCrossbows = {}, {} return end
         for _, s in ipairs(activeBows) do
             if Mods.InstantDraw then s.drawStart = os.clock() - 10 end
             if Mods.NoCooldown then s.lastShot = -math.huge end
@@ -142,10 +162,10 @@ return function(Window, Library)
         for _, cb in ipairs(activeCrossbows) do
             if Mods.InstantReload then cb.loaded = true; cb.reloadAt = nil end
         end
-    end)
+    end))
 
-    RunService.RenderStepped:Connect(function()
-        if not Universal.InfiniteAmmo then activeAmmo = {} return end
+    table.insert(connections, RunService.RenderStepped:Connect(function()
+        if not isRunning or not Universal.InfiniteAmmo then activeAmmo = {} return end
         for _, s in ipairs(activeAmmo) do
             s.pendingSpent = 0
             local c = s.counts
@@ -156,16 +176,50 @@ return function(Window, Library)
                 end
             end
         end
-    end)
+    end))
 
-    MasterSec:addToggle({name = "Enable Bow Mods", flag = "B_Enable", callback = function(s) Mods.Enabled = s end})
+    uiToggles.Master = MasterSec:addToggle({name = "Enable Bow Mods", flag = "B_Enable", callback = function(s) 
+        Mods.Enabled = s
+        if not s then
+            Mods.InstantDraw = false; Mods.InstantReload = false; Mods.NoCooldown = false; Mods.NoRecoil = false; Mods.NoDrop = false
+            
+            if uiToggles.Draw and uiToggles.Draw.Set then uiToggles.Draw:Set(false) end
+            if uiToggles.Reload and uiToggles.Reload.Set then uiToggles.Reload:Set(false) end
+            if uiToggles.Cooldown and uiToggles.Cooldown.Set then uiToggles.Cooldown:Set(false) end
+            if uiToggles.Recoil and uiToggles.Recoil.Set then uiToggles.Recoil:Set(false) end
+            if uiToggles.Drop and uiToggles.Drop.Set then uiToggles.Drop:Set(false) end
+            
+            revertProperties(allProps)
+        end
+    end})
     
-    BowSec:addToggle({name = "Instant Draw", flag = "B_InstantDraw", callback = function(s) Mods.InstantDraw = s end})
-    BowSec:addToggle({name = "Instant Reload", flag = "B_InstantReload", callback = function(s) Mods.InstantReload = s end})
-    BowSec:addToggle({name = "No Shot Cooldown", flag = "B_NoCooldown", callback = function(s) Mods.NoCooldown = s end})
-    BowSec:addToggle({name = "No Recoil / Tremble", flag = "B_NoRecoil", callback = function(s) Mods.NoRecoil = s end})
-    BowSec:addToggle({name = "No Drop", flag = "B_NoDrop", callback = function(s) Mods.NoDrop = s end})
+    uiToggles.Draw = BowSec:addToggle({name = "Instant Draw", flag = "B_InstantDraw", callback = function(s) Mods.InstantDraw = s end})
+    uiToggles.Reload = BowSec:addToggle({name = "Instant Reload", flag = "B_InstantReload", callback = function(s) Mods.InstantReload = s end})
+    uiToggles.Cooldown = BowSec:addToggle({name = "No Shot Cooldown", flag = "B_NoCooldown", callback = function(s) Mods.NoCooldown = s; if not s then revertProperties(cooldownProps) end end})
+    uiToggles.Recoil = BowSec:addToggle({name = "No Recoil / Tremble", flag = "B_NoRecoil", callback = function(s) Mods.NoRecoil = s; if not s then revertProperties(trembleProps) end end})
+    uiToggles.Drop = BowSec:addToggle({name = "No Drop", flag = "B_NoDrop", callback = function(s) Mods.NoDrop = s end})
     
     UniversalSec:addToggle({name = "Infinite Ammo", flag = "U_InfAmmo", callback = function(s) Universal.InfiniteAmmo = s end})
     UniversalSec:addToggle({name = "No Air Block", flag = "U_NoAirBlock", callback = function(s) Universal.NoAirBlock = s end})
+
+    -- Return the unload function for main.lua
+    return function()
+        isRunning = false
+        for _, conn in ipairs(connections) do
+            pcall(function() conn:Disconnect() end)
+        end
+        revertProperties(allProps)
+        
+        -- Restore original BowSpec if we patched it
+        if bowSpecTable and originalBowSpec then
+            pcall(safeSetReadonly, bowSpecTable, false)
+            pcall(safeRawSet, bowSpecTable, "BowSpec", originalBowSpec)
+        end
+
+        -- Restore u16 blocked function if we patched it
+        if u16Table and u16Blocked then
+            pcall(safeSetReadonly, u16Table, false)
+            pcall(safeRawSet, u16Table, "blocked", u16Blocked)
+        end
+    end
 end
