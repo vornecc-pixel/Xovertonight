@@ -3,7 +3,6 @@ return function(Window, Library)
     local RunService = game:GetService("RunService")
     local newcclosure = (type(newcclosure) == "function") and newcclosure or function(f) return f end
 
-    -- AC METATABLE PROTECTION
     local safeGetGC = newcclosure(getgc)
     local safeSetReadonly = newcclosure(setreadonly)
     local safeRawSet = newcclosure(rawset)
@@ -58,7 +57,6 @@ return function(Window, Library)
         for _, tbl in ipairs(toRemove) do tracked[tbl] = nil end
     end
 
-    -- LAG-FREE SCANNER
     task.spawn(function()
         while isRunning do
             task.wait(2)
