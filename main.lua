@@ -39,12 +39,18 @@ showLoading(checks, function()
         end
     end)
 
-    -- Mouse & Menu Toggle
+    -- ============================================================
+    -- FIXED MOUSE & MENU TOGGLE SYSTEM
+    -- ============================================================
     local menuOpen = true
+    
     local original_toggle = window.toggle_menu
     window.toggle_menu = function(self, state)
-        if state == nil then state = not menuOpen end
+        -- If the menu is mid-animation, block the toggle to prevent breaking
         if self.is_closing_menu then return end
+        
+        -- If no state is provided, flip the current state
+        if state == nil then state = not menuOpen end
         menuOpen = state
         
         if state == true then
@@ -54,11 +60,14 @@ showLoading(checks, function()
             UserInputService.MouseIconEnabled = false
             UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
         end
+        
         return original_toggle(self, state)
     end
     
+    -- Initial startup state
     UserInputService.MouseIconEnabled = true
     UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+    -- ============================================================
 
     -- 2. Load Mods
     local loadGunMods = loadstring(game:HttpGet(repoBase .. "GunMods.lua"))()
@@ -145,32 +154,37 @@ showLoading(checks, function()
         library:configListUpdate()
     end}); library:configListUpdate()
 
-    uiSec:addLabel({name = "Menu Toggle Keybind"}):addKeyBind({
+    -- ============================================================
+    -- FIXED KEYBIND (Forced to Toggle mode)
+    -- ============================================================
+    local toggleBind = uiSec:addLabel({name = "Menu Toggle Keybind"}):addKeyBind({
         flag = "UI_Toggle_Bind",
-        callback = function() window:toggle_menu(not menuOpen) end
+        callback = function() 
+            window:toggle_menu() -- No arguments passed, lets our override handle the flip
+        end
     })
     
+    -- Force the keybind to act as a Toggle instead of a Hold
+    if toggleBind and toggleBind.SetStateType then
+        toggleBind:SetStateType("Toggle")
+    end
+    -- ============================================================
+
     uiSec:addToggle({name = "Watermark", flag = "UI_Watermark", callback = function(bool) WatermarkEnabled = bool end})
     uiSec:addToggle({name = "Show FPS", default = true, flag = "UI_FPS", callback = function(bool) ShowFPS = bool end})
     uiSec:addToggle({name = "Show Ping", default = true, flag = "UI_Ping", callback = function(bool) ShowPing = bool end})
 
-    -- ============================================================
-    -- 6. BULLETPROOF UNLOAD EVERYTHING
-    -- ============================================================
+    -- 5. Unload Everything
     dangerSec:addButton({name = "Unload Everything", callback = function()
-        -- 1. Stop Watermark Loops
         wmRunning = false
         if wmConnection then wmConnection:Disconnect() end
         if Watermark then Watermark:Remove() end
 
-        -- 2. Unload Mods (Breaks loops & reverts memory)
         if unloadGunMods then pcall(unloadGunMods) end
         if unloadBowMods then pcall(unloadBowMods) end
         
-        -- 3. Unload UI Library
         pcall(function() library:unloadMenu() end)
         
-        -- 4. Force Delete Remaining UI Elements
         local gui = (gethui and gethui() or game:GetService("CoreGui"))
         for _, v in pairs(gui:GetDescendants()) do
             if v:IsA("ScreenGui") and (string.find(v.Name, "Obelus") or v.Name == "ObelusUI") then
@@ -178,11 +192,9 @@ showLoading(checks, function()
             end
         end
         
-        -- 5. Restore Mouse
         UserInputService.MouseIconEnabled = true
         UserInputService.MouseBehavior = Enum.MouseBehavior.Default
         
-        -- 6. Clear Globals
         getgenv().Library = nil
         getgenv().Utility = nil
         
