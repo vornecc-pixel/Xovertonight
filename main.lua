@@ -87,6 +87,48 @@ do
 			.. src:sub(j + 1)
 	end
 
+	-- Sections created while their tab is inactive must be hidden immediately,
+	-- otherwise their drawings become visible as soon as library.loaded flips.
+	needle = "            return section\n        end\n\n        if self.sshit == nil then"
+	i, j = src:find(needle, 1, true)
+	if i then
+		src = src:sub(1, i - 1)
+			.. "            if not self.on then\n                section:Hide()\n            end\n            self:Update()\n\n"
+			.. src:sub(i)
+	end
+
+	-- Re-hide non-selected tabs after a fade; Fade only includes the active
+	-- tab's sections, but a stale visible section can otherwise leak through.
+	needle = "        self:Update()\n\n        self:HideUseless"
+	i, j = src:find(needle, 1, true)
+	if i then
+		local at = i + #"        self:Update()\n\n"
+		src = src:sub(1, at - 1)
+			.. "        if self.sshit then\n            for _, other_tab in pairs(self.tabs) do\n                if other_tab ~= self.sshit then other_tab:Hide() end\n            end\n        end\n\n"
+			.. src:sub(at)
+	end
+
+	-- toggle.Update must ignore the compatibility layer's metatable method
+	-- named "keybind" and only use a raw attached keybind object.
+	needle = "                    if self.keybind then\n                        self.keybind:SetOffset"
+	i, j = src:find(needle, 1, true)
+	if i then
+		src = src:sub(1, i - 1)
+			.. "                    if rawget(self, \"keybind\") then\n                        rawget(self, \"keybind\"):SetOffset"
+			.. src:sub(j + 1)
+	end
+
+	-- utility:Combine() must preserve array order. Some runtimes iterate
+	-- pairs() on an array in a non-ascending order, which would make
+	-- section.instances[1] stop being the section frame and break layout.
+	needle = "    function utility:Combine(t1, t2)\n        local t3 = {}\n        for i, v in pairs(t1) do\n            table.insert(t3, v)\n        end\n        for i, v in pairs(t2) do\n            table.insert(t3, v)\n        end\n        return t3\n    end"
+	i, j = src:find(needle, 1, true)
+	if i then
+		src = src:sub(1, i - 1)
+			.. "    function utility:Combine(t1, t2)\n        local t3 = {}\n        for i = 1, #t1 do\n            table.insert(t3, t1[i])\n        end\n        for i = 1, #t2 do\n            table.insert(t3, t2[i])\n        end\n        return t3\n    end"
+			.. src:sub(j + 1)
+	end
+
 	local chunk = assert(loadstring(src), "[OVX] noname.hack UI failed to compile")
 	local a, b = chunk()
 	library, utility = a, b
@@ -255,7 +297,16 @@ local function toggleInfo(info)
 	return out
 end
 
-local function attachKeybind(keybind, info, sectionName)
+local function refreshSection(section)
+	local tab = section and section._compatTab
+	if not tab then return end
+	if section.Update then pcall(section.Update, section) end
+	if tab.Update then pcall(tab.Update, tab) end
+	if nativeWindow and nativeWindow.Update then pcall(nativeWindow.Update, nativeWindow) end
+	if not tab.on and section.Hide then pcall(section.Hide, section) end
+end
+
+local function attachKeybind(keybind, info, section)
 	info = info or {}
 	local flag = info.flag
 	local callback = info.callback
@@ -266,7 +317,7 @@ local function attachKeybind(keybind, info, sectionName)
 
 	rebindPointer(keybind, pointer)
 	keybind.name = info.name or keybind.name
-	if sectionName then keybind.sname = sectionName end
+	if section and section.name then keybind.sname = section.name end
 	if keybind.Set then pcall(keybind.Set, keybind, { boundKey, mode }) end
 	if flag then library.flags[flag] = { active = false, mode = mode, key = boundKey } end
 
@@ -305,6 +356,7 @@ local function attachKeybind(keybind, info, sectionName)
 	if flag then
 		registerFlagSetter(flag, function(value) keybind:set(value) end)
 	end
+	refreshSection(section)
 	return keybind
 end
 
@@ -333,6 +385,7 @@ local function attachColorpicker(colorpicker, info, section)
 	end
 
 	if flag then registerFlagSetter(flag, setColor) end
+	refreshSection(section)
 	return colorpicker
 end
 
@@ -356,6 +409,7 @@ local function attachValue(object, info, section, kind)
 	if flag then
 		registerFlagSetter(flag, function(value) return object:Set(value) end)
 	end
+	refreshSection(section)
 	return object
 end
 
@@ -369,25 +423,47 @@ local function attachToggle(toggle, info, section)
 		return self:Set(value)
 	end
 
-	function toggle:keybind(nextInfo)
+	-- Old Atlanta call sites use toggle:keybind()/toggle:colorpicker(), but the
+	-- native library stores an attached keybind in toggle.keybind. Resolving
+	-- the compat methods through a metatable keeps that raw field free; the
+	-- loader patches toggle.Update to use rawget() for the native object.
+	local function compatKeybind(self, nextInfo)
 		local kbInfo = keybindInfo(nextInfo)
 		local keybind = self:Keybind(kbInfo)
-		return attachKeybind(keybind, nextInfo, section.name)
+		return attachKeybind(keybind, nextInfo, section)
 	end
 
-	function toggle:colorpicker(nextInfo)
+	local function compatColorpicker(self, nextInfo)
 		local cpInfo = colorpickerInfo(nextInfo)
 		local colorpicker = self:Colorpicker(cpInfo)
 		return attachColorpicker(colorpicker, nextInfo, section)
 	end
 
+	local meta = getmetatable(toggle) or {}
+	local oldIndex = meta.__index
+	meta.__index = function(self, key)
+		if key == "keybind" and rawget(self, "keybind") == nil then
+			return compatKeybind
+		end
+		if key == "colorpicker" and rawget(self, "colorpicker") == nil then
+			return compatColorpicker
+		end
+		if type(oldIndex) == "function" then return oldIndex(self, key) end
+		if type(oldIndex) == "table" then return oldIndex[key] end
+		return rawget(self, key)
+	end
+	setmetatable(toggle, meta)
+
 	if flag then
 		registerFlagSetter(flag, function(value) return toggle:set(value) end)
 	end
+	refreshSection(section)
 	return toggle
 end
 
 local function attachSection(section, tab)
+	section._compatTab = tab
+
 	function section:button_holder()
 		return self
 	end
@@ -395,6 +471,7 @@ local function attachSection(section, tab)
 	function section:button(info)
 		info = info or {}
 		self:Button({ name = info.name or "Button", callback = info.callback or function() end })
+		refreshSection(self)
 		return self
 	end
 
@@ -412,7 +489,7 @@ local function attachSection(section, tab)
 
 	function section:keybind(info)
 		local kbInfo = keybindInfo(info)
-		return attachKeybind(self:Keybind(kbInfo), info, self.name)
+		return attachKeybind(self:Keybind(kbInfo), info, self)
 	end
 
 	function section:colorpicker(info)
@@ -445,7 +522,9 @@ local function attachTab(tab)
 		function column:section(info)
 			info = info or {}
 			local section = tab:Section({ name = info.name or "Section", side = side })
-			return attachSection(section, tab)
+			attachSection(section, tab)
+			refreshSection(section)
+			return section
 		end
 		return column
 	end
@@ -453,6 +532,7 @@ local function attachTab(tab)
 	function tab.open_tab()
 		if nativeWindow and nativeWindow.SelectTab then
 			pcall(nativeWindow.SelectTab, nativeWindow, tab.name)
+			if nativeWindow.Update then pcall(nativeWindow.Update, nativeWindow) end
 		end
 	end
 
@@ -748,8 +828,20 @@ end
 function library:config_list_update()
 	if initialized then return end
 	initialized = true
-	if nativeWindow and nativeWindow.Init then pcall(nativeWindow.Init, nativeWindow) end
+	if nativeWindow and nativeWindow.Init then
+		local ok, err = pcall(nativeWindow.Init, nativeWindow)
+		if not ok then warn("[OVX] noname.hack Init failed: " .. tostring(err)) end
+	end
+	pcall(function()
+		if nativeWindow and nativeWindow.Update then nativeWindow:Update() end
+	end)
 	task.delay(0.3, function()
+		pcall(function()
+			if nativeWindow and nativeWindow.Update then nativeWindow:Update() end
+			if nativeWindow and nativeWindow.sshit and nativeWindow.SelectTab then
+				nativeWindow:SelectTab(nativeWindow.sshit.name)
+			end
+		end)
 		local preview = library._compatPreview
 		if preview and preview.refresh_elements then pcall(preview.refresh_elements) end
 	end)
