@@ -104,7 +104,7 @@ do
 	if i then
 		local at = i + #"        self:Update()\n\n"
 		src = src:sub(1, at - 1)
-			.. "        if self.sshit then\n            for _, other_tab in pairs(self.tabs) do\n                if other_tab ~= self.sshit then other_tab:Hide() end\n            end\n        end\n\n"
+			.. "        if self.sshit then\n            for _, other_tab in ipairs(self.tabs) do\n                if other_tab ~= self.sshit then other_tab:Hide() end\n            end\n        end\n        if self.sshit and self.sshit._compatApplyScroll then\n            pcall(self.sshit._compatApplyScroll, self.sshit)\n        end\n\n"
 			.. src:sub(at)
 	end
 
@@ -129,6 +129,34 @@ do
 			.. src:sub(j + 1)
 	end
 
+
+	-- Deterministic section order: pairs() on an array is not guaranteed to
+	-- emit ascending indexes on every executor, which breaks scroll offsets.
+	needle = "            for sn, side in pairs(self.sides) do\n\n                -- // every section in it\n\n                for i, v in pairs(side) do"
+	i, j = src:find(needle, 1, true)
+	if i then
+		src = src:sub(1, i - 1)
+			.. "            for sn, side in ipairs(self.sides) do\n\n                -- // every section in it\n\n                for i, v in ipairs(side) do"
+			.. src:sub(j + 1)
+	end
+
+	-- OVX owns cursor state from the explicit menu-visible callback. The
+	-- upstream Fade assignments would immediately undo it (false on show).
+	needle = "            uis.MouseIconEnabled = true"
+	i, j = src:find(needle, 1, true)
+	if i then
+		src = src:sub(1, i - 1)
+			.. "            -- OVX restores the saved cursor state on hide"
+			.. src:sub(j + 1)
+	end
+	needle = "            uis.MouseIconEnabled = false"
+	i, j = src:find(needle, 1, true)
+	if i then
+		src = src:sub(1, i - 1)
+			.. "            -- OVX keeps the cursor free on show"
+			.. src:sub(j + 1)
+	end
+
 	local chunk = assert(loadstring(src), "[OVX] noname.hack UI failed to compile")
 	local a, b = chunk()
 	library, utility = a, b
@@ -136,6 +164,20 @@ do
 end
 
 local flags = library.flags
+local function setDefaultFlag(name, value)
+	if library.flags[name] == nil then library.flags[name] = value end
+end
+setDefaultFlag("sa_enabled", true)
+setDefaultFlag("sa_force_head", true)
+setDefaultFlag("sa_instant_hit", true)
+setDefaultFlag("sa_remote_jack", true)
+setDefaultFlag("sa_bow_enabled", true)
+setDefaultFlag("sa_target_npc", true)
+setDefaultFlag("sa_snapline_npc", true)
+setDefaultFlag("tb_npc", true)
+setDefaultFlag("sa_scan_hz", 12)
+setDefaultFlag("ui_free_mouse", true)
+setDefaultFlag("ui_hud_hz", 4)
 local compatTheme = {
 	accent   = Color3.fromRGB(155, 105, 230),
 	dcont    = Color3.fromRGB(12, 12, 17),
@@ -230,6 +272,15 @@ end
 local function registerFlagSetter(flag, setter)
 	if flag then configSetters[flag] = setter end
 end
+
+local function setCompatFlag(flag, value)
+	local setter = configSetters[flag]
+	if setter then pcall(setter, value) else library.flags[flag] = value end
+end
+registerFlagSetter("force_head", function(value) setCompatFlag("sa_force_head", value) end)
+registerFlagSetter("instant_hit", function(value) setCompatFlag("sa_instant_hit", value) end)
+registerFlagSetter("remote_jack", function(value) setCompatFlag("sa_remote_jack", value) end)
+registerFlagSetter("sa_npc", function(value) setCompatFlag("sa_target_npc", value) end)
 
 local function keyName(value)
 	if typeof(value) == "EnumItem" then return value.Name end
@@ -497,7 +548,18 @@ local function attachSection(section, tab)
 		return attachColorpicker(self:Colorpicker(cpInfo), info, self)
 	end
 
-	function section:label()
+	function section:label(info)
+		local text = type(info) == "table" and tostring(info.name or info.text or "") or tostring(info or "")
+		if text == "" then return self end
+		local y = tonumber(self:NextObjectPosition()) or 10
+		local label = utility:Draw("Text", Vector2.new(8, y), {
+			Text = text, Size = 11, Font = Drawing.Fonts.Plex,
+			Color = Color3.fromRGB(190, 165, 235), Outline = true,
+			Transparency = 1, Parent = self.instances[1],
+		})
+		table.insert(self.instances, label)
+		self:UpdateScale(14)
+		refreshSection(self)
 		return self
 	end
 
@@ -514,6 +576,8 @@ end
 
 local function attachTab(tab)
 	tab._compatColumnCount = 0
+	tab._compatColumns = { {}, {} }
+	tab._compatScroll = 0
 
 	function tab:column()
 		tab._compatColumnCount = tab._compatColumnCount + 1
@@ -527,6 +591,53 @@ local function attachTab(tab)
 			return section
 		end
 		return column
+	end
+
+	function tab:_compatApplyScroll(scroll)
+		if not nativeWindow or not self._compatScrollable then return end
+		local frame = nativeWindow.frame
+		local maxH = math.max(120, (frame and frame.Size and frame.Size.Y or 620) - 55 - 24)
+		local cols = self._compatColumns or { {}, {} }
+		self._compatColumns = cols
+		local maxScroll = math.max(0, math.max(#(cols[1] or {}), #(cols[2] or {})) - 1)
+		self._compatScroll = math.clamp(tonumber(scroll) or self._compatScroll or 0, 0, maxScroll)
+		local visible = { {}, {} }
+		for sn = 1, 2 do
+			local list = cols[sn] or {}
+			local start = math.min(self._compatScroll + 1, #list)
+			if start < 1 then start = 1 end
+			local used = 0
+			for idx = start, #list do
+				local item = list[idx]
+				if item and item.section then
+					local h = tonumber(item.h) or 40
+					if #visible[sn] == 0 or used + h <= maxH then
+						visible[sn][#visible[sn] + 1] = item.section
+						used = used + h
+						item.section.side = sn == 1 and "left" or "right"
+					end
+				end
+			end
+		end
+		self.sides[1], self.sides[2] = visible[1], visible[2]
+		if self.Update then pcall(self.Update, self) end
+		for _, section in ipairs(self.sections or {}) do
+			if section.Hide then pcall(section.Hide, section) end
+		end
+		if self.on and frame and frame.Visible then
+			for sn = 1, 2 do
+				for _, section in ipairs(self.sides[sn]) do
+					if section.Show then pcall(section.Show, section) end
+				end
+			end
+		end
+	end
+
+	local nativeShow = tab.Show
+	function tab.Show(self, ...)
+		local result = nativeShow(self, ...)
+		if self._compatApplyScroll then self:_compatApplyScroll(self._compatScroll or 0) end
+		return result
 	end
 
 	function tab.open_tab()
@@ -585,6 +696,66 @@ local function deserializeValue(value)
 	return value
 end
 
+local function availableColumnHeight()
+	local frame = nativeWindow and nativeWindow.frame
+	local h = frame and frame.Size and frame.Size.Y or 620
+	return math.max(120, h - 55 - 24)
+end
+
+local function sectionHeight(section)
+	if section.Update then pcall(section.Update, section) end
+	local inst = section.instances and section.instances[1]
+	local raw = inst and inst.Size and tonumber(inst.Size.Y)
+		or tonumber(section.scale) or 10
+	return math.max(24, raw) + 20
+end
+
+local function rebalanceAllTabs()
+	if not (nativeWindow and nativeWindow.tabs) then return end
+	local maxH = availableColumnHeight()
+	for _, tab in ipairs(nativeWindow.tabs) do
+		-- Tabs built with the normal two columns keep their authored layout.
+		-- Only tabs that called column() more than twice (Misc, World, Exploit)
+		-- get height-aware packing + wheel scrolling.
+		tab._compatScrollable = (tonumber(tab._compatColumnCount) or 0) > 2
+		if tab._compatScrollable then
+			local work = {}
+			for index, section in ipairs(tab.sections or {}) do
+				if not section.rna then
+					work[#work + 1] = { i = index, h = sectionHeight(section), section = section }
+				end
+			end
+			table.sort(work, function(a, b)
+				if a.h == b.h then return a.i < b.i end
+				return a.h > b.h
+			end)
+			local columns, heights = { {}, {} }, { 0, 0 }
+			for _, item in ipairs(work) do
+				local sn = heights[1] <= heights[2] and 1 or 2
+				local other = sn == 1 and 2 or 1
+				if heights[sn] + item.h > maxH and heights[other] + item.h <= maxH then
+					sn = other
+				end
+				columns[sn][#columns[sn] + 1] = item
+				heights[sn] = heights[sn] + item.h
+				item.section.side = sn == 1 and "left" or "right"
+			end
+			for sn = 1, 2 do
+				table.sort(columns[sn], function(a, b) return a.i < b.i end)
+			end
+			tab._compatColumns = columns
+			if tab._compatApplyScroll then tab:_compatApplyScroll(tab._compatScroll or 0) end
+		elseif tab.Update then
+			pcall(tab.Update, tab)
+		end
+		if not tab.on and tab.Hide then pcall(tab.Hide, tab) end
+	end
+	if nativeWindow.Update then pcall(nativeWindow.Update, nativeWindow) end
+	if nativeWindow.sshit and nativeWindow.SelectTab then
+		pcall(nativeWindow.SelectTab, nativeWindow, nativeWindow.sshit.name)
+	end
+end
+
 local initialized = false
 function library:window(info)
 	info = info or {}
@@ -597,11 +768,142 @@ function library:window(info)
 	nativeWindow.frame.Position = utility:RoundVector(screen / 2 - size / 2)
 	nativeWindow:Resize(size)
 
+	local frame = nativeWindow.frame
+	local uis = game:GetService("UserInputService")
+	if flags["ui_width"] == nil then flags["ui_width"] = size.X end
+	if flags["ui_height"] == nil then flags["ui_height"] = size.Y end
+	nativeWindow._compatRebalance = rebalanceAllTabs
+
+	local resizeHandle = utility:Draw("Square", Vector2.new(size.X - 14, size.Y - 14), {
+		Size = Vector2.new(10, 10), Color = compatTheme.accent,
+		Group = "accent", Filled = true, Parent = frame, ZIndex = 10^6,
+	})
+	table.insert(library.fade_instances, resizeHandle)
+	nativeWindow._compatResizeHandle = resizeHandle
+
+	function nativeWindow:resize(width, height)
+		if self._compatResizing then return frame.Size end
+		self._compatResizing = true
+		local ok, result = pcall(function()
+			local current = utility:ScreenSize()
+			local maxW = math.max(500, current.X - 80)
+			local maxH = math.max(420, current.Y - 80)
+			local w = math.floor(math.clamp(tonumber(width) or frame.Size.X, 500, maxW))
+			local h = math.floor(math.clamp(tonumber(height) or frame.Size.Y, 420, maxH))
+			local newSize = Vector2.new(w, h)
+			self:Resize(newSize)
+			if resizeHandle then resizeHandle.SetOffset(Vector2.new(w - 14, h - 14)) end
+			flags["ui_width"], flags["ui_height"] = w, h
+			if library._compatPreview and library._compatPreview.reposition then
+				pcall(library._compatPreview.reposition)
+			end
+			local setW, setH = library.config_flags["ui_width"], library.config_flags["ui_height"]
+			if setW then pcall(setW, w) end
+			if setH then pcall(setH, h) end
+			if self._compatRebalance then pcall(self._compatRebalance) end
+			if self.Update then pcall(self.Update, self) end
+			return newSize
+		end)
+		self._compatResizing = false
+		if ok then return result end
+		warn("[OVX] resize failed: " .. tostring(result))
+		return frame.Size
+	end
+
+	library.menu_visible = false
+	nativeWindow._compatMenuVisible = false
+	local savedMouseIcon, savedMouseBehavior
+	local mouseFreeAt, mouseWasFreed = 0, false
+	local function captureMouseState()
+		pcall(function()
+			savedMouseIcon = uis.MouseIconEnabled
+			savedMouseBehavior = uis.MouseBehavior
+		end)
+	end
+	local function setMouseFree()
+		pcall(function()
+			uis.MouseIconEnabled = true
+			if Enum.MouseBehavior and Enum.MouseBehavior.Default then
+				uis.MouseBehavior = Enum.MouseBehavior.Default
+			end
+		end)
+		mouseWasFreed = true
+	end
+	local function setMouseGame()
+		pcall(function()
+			uis.MouseIconEnabled = savedMouseIcon == nil and false or savedMouseIcon
+			if savedMouseBehavior ~= nil then
+				uis.MouseBehavior = savedMouseBehavior
+			elseif Enum.MouseBehavior and Enum.MouseBehavior.LockCenter then
+				uis.MouseBehavior = Enum.MouseBehavior.LockCenter
+			end
+		end)
+		mouseWasFreed = false
+	end
+	local function setMenuVisible(state, freeMouse)
+		state = state and true or false
+		if state and not library.menu_visible then captureMouseState() end
+		library.menu_visible = state
+		nativeWindow._compatMenuVisible = state
+		if state then
+			if freeMouse ~= false then setMouseFree() else setMouseGame() end
+		else
+			setMouseGame()
+		end
+	end
+	nativeWindow._compatSetMouseFree = setMouseFree
+	nativeWindow._compatSetMenuVisible = setMenuVisible
+	nativeWindow:Connect({ con = "fade", callback = function(showing)
+		setMenuVisible(showing, flags["ui_free_mouse"] ~= false)
+	end })
+	captureMouseState()
+	utility:Connect(game:GetService("RunService").Heartbeat, function()
+		if not library.menu_visible or not frame.Visible then return end
+		if flags["ui_free_mouse"] == false then
+			if mouseWasFreed then setMouseGame() end
+			return
+		end
+		local now = os.clock()
+		if now - mouseFreeAt < 0.2 then return end
+		mouseFreeAt = now
+		setMouseFree()
+	end)
+
+	local resizing, resizeStartMouse, resizeStartSize = false, nil, nil
+	utility:Connect(uis.InputBegan, function(input)
+		if frame.Visible and input.UserInputType == Enum.UserInputType.MouseButton1
+			and utility:MouseOverDrawing(resizeHandle) then
+			resizing = true
+			resizeStartMouse = uis:GetMouseLocation()
+			resizeStartSize = frame.Size
+		end
+	end)
+	utility:Connect(uis.InputChanged, function(input)
+		if resizing and input.UserInputType == Enum.UserInputType.MouseMovement then
+			local delta = uis:GetMouseLocation() - resizeStartMouse
+			nativeWindow:resize(resizeStartSize.X + delta.X, resizeStartSize.Y + delta.Y)
+		end
+	end)
+	utility:Connect(uis.InputEnded, function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then resizing = false end
+	end)
+
+	-- Long tabs (Misc/Exploit) are scrollable instead of drawing below the frame.
+	utility:Connect(uis.InputBegan, function(input)
+		if not frame.Visible or input.UserInputType ~= Enum.UserInputType.MouseWheel then return end
+		if not utility:MouseOverDrawing(frame) then return end
+		local tab = nativeWindow.sshit
+		if not (tab and tab._compatApplyScroll) then return end
+		local delta = 0
+		pcall(function() delta = input.Position.Z or 0 end)
+		local step = delta > 0 and -1 or (delta < 0 and 1 or 0)
+		if step ~= 0 then tab:_compatApplyScroll((tab._compatScroll or 0) + step) end
+	end)
+
 	-- noname.hack does not bind a menu key by itself. Keep Insert / RightShift
 	-- as show-hide shortcuts and register the connection with the library so
 	-- window:unload() disconnects it.
 	nativeWindow.menu_key = Enum.KeyCode.Insert
-	local uis = game:GetService("UserInputService")
 	utility:Connect(uis.InputBegan, function(input)
 		if input.KeyCode == Enum.KeyCode.Insert or input.KeyCode == Enum.KeyCode.RightShift then
 			if nativeWindow.Fade then pcall(nativeWindow.Fade, nativeWindow) end
@@ -622,9 +924,13 @@ function library:window(info)
 		local state = b
 		if state == nil then state = a end
 		if state == nil or state == nativeWindow then state = true end
-		local frame = nativeWindow.frame
 		if frame.Visible ~= state and nativeWindow.Fade then
 			pcall(nativeWindow.Fade, nativeWindow)
+		end
+		if nativeWindow._compatSetMenuVisible then
+			pcall(nativeWindow._compatSetMenuVisible, state, flags["ui_free_mouse"] ~= false)
+		elseif state and nativeWindow._compatSetMouseFree then
+			pcall(nativeWindow._compatSetMouseFree)
 		end
 	end
 
@@ -757,6 +1063,11 @@ function library:window(info)
 			setVisible(weaponText, enabled and getFlagBool("Weapon", false))
 		end
 
+		function preview.reposition()
+			bg.SetOffset(Vector2.new(frame.Size.X + 12, 22))
+			pcall(preview.refresh_elements)
+		end
+
 		preview.refresh_elements()
 		library._compatPreview = preview
 		nativeWindow:Connect({ con = "fade", callback = function()
@@ -828,18 +1139,30 @@ end
 function library:config_list_update()
 	if initialized then return end
 	initialized = true
+	if nativeWindow and nativeWindow._compatRebalance then
+		pcall(nativeWindow._compatRebalance)
+	end
 	if nativeWindow and nativeWindow.Init then
 		local ok, err = pcall(nativeWindow.Init, nativeWindow)
 		if not ok then warn("[OVX] noname.hack Init failed: " .. tostring(err)) end
+	end
+	if nativeWindow and nativeWindow._compatSetMenuVisible then
+		pcall(nativeWindow._compatSetMenuVisible, true, flags["ui_free_mouse"] ~= false)
+	elseif nativeWindow and nativeWindow._compatSetMouseFree then
+		pcall(nativeWindow._compatSetMouseFree)
 	end
 	pcall(function()
 		if nativeWindow and nativeWindow.Update then nativeWindow:Update() end
 	end)
 	task.delay(0.3, function()
 		pcall(function()
+			if nativeWindow and nativeWindow._compatRebalance then pcall(nativeWindow._compatRebalance) end
 			if nativeWindow and nativeWindow.Update then nativeWindow:Update() end
 			if nativeWindow and nativeWindow.sshit and nativeWindow.SelectTab then
 				nativeWindow:SelectTab(nativeWindow.sshit.name)
+			end
+			if flags["ui_width"] and flags["ui_height"] and nativeWindow.resize then
+				nativeWindow:resize(flags["ui_width"], flags["ui_height"])
 			end
 		end)
 		local preview = library._compatPreview
@@ -1692,6 +2015,160 @@ do
 	-- Bow remotes (resolved lazily — may not exist until a bow loads)
 	local BowRemotes, BowFire, BowLaunch, BowHit
 	local arrowSpeed, arrowGravity, arrowDrag = nil, 18, 0
+
+	local SA_NPC_FOLDERS = { "Sleepers", "Scientists", "Animals" }
+	local SA = {
+		fireRemotes = {}, hitRemotes = {}, bowRemotes = {},
+		flightRemote = nil, flightConn = nil, flightHookedRemote = nil,
+		pendingId = nil, pendingAt = 0,
+		npcList = {}, npcSet = {}, npcAt = 0,
+	}
+	local function addNpcModel(model)
+		if not (model and model:IsA("Model")) then return end
+		if model == lp.Character then return end
+		if not model:FindFirstChildOfClass("Humanoid") then return end
+		if Players:GetPlayerFromCharacter(model) then return end
+		if SA.npcSet[model] then return end
+		SA.npcSet[model] = true
+		SA.npcList[#SA.npcList + 1] = model
+	end
+	local function removeNpcModel(model)
+		if not SA.npcSet[model] then return end
+		SA.npcSet[model] = nil
+		for i = #SA.npcList, 1, -1 do
+			if SA.npcList[i] == model then table.remove(SA.npcList, i); break end
+		end
+	end
+	local function scanNpcRoots()
+		-- O(1) top-level + two shallow levels. New models arrive through
+		-- DescendantAdded; no Workspace:GetDescendants() sweep is ever used.
+		for _, obj in ipairs(Workspace:GetChildren()) do
+			if obj:IsA("Model") then
+				addNpcModel(obj)
+			elseif obj:IsA("Folder") or obj:IsA("Configuration") then
+				for _, child in ipairs(obj:GetChildren()) do
+					addNpcModel(child)
+					if child:IsA("Folder") or child:IsA("Configuration") then
+						for _, grand in ipairs(child:GetChildren()) do addNpcModel(grand) end
+					end
+				end
+			end
+		end
+	end
+	function SA.refreshNpcs(force)
+		local now = os.clock()
+		if not force and now - SA.npcAt < 5 then return end
+		SA.npcAt = now
+		table.clear(SA.npcList)
+		table.clear(SA.npcSet)
+		for _, fname in ipairs(SA_NPC_FOLDERS) do
+			local folder = Workspace:FindFirstChild(fname)
+			if folder then
+				for _, mdl in ipairs(folder:GetChildren()) do addNpcModel(mdl) end
+			end
+		end
+		local gr = Workspace:FindFirstChild("GunRange")
+		local dum = gr and gr:FindFirstChild("Dummies")
+		if dum then
+			for _, mdl in ipairs(dum:GetChildren()) do addNpcModel(mdl) end
+		end
+		scanNpcRoots()
+	end
+
+	local function hookFlight()
+		if SA.flightHookedRemote == SA.flightRemote then return end
+		if SA.flightConn then pcall(SA.flightConn.Disconnect, SA.flightConn) end
+		SA.flightHookedRemote = SA.flightRemote
+		SA.flightConn = nil
+		if not SA.flightRemote then return end
+		SA.flightConn = bind(SA.flightRemote.OnClientEvent:Connect(function(...)
+			for _, v in ipairs({ ... }) do
+				if typeof(v) == "Vector3" and v.Magnitude > 20 then
+					arrowSpeed = v.Magnitude
+				elseif type(v) == "table" then
+					if type(v.speed) == "number" then arrowSpeed = v.speed end
+					if type(v.gravity) == "number" then arrowGravity = v.gravity end
+					if type(v.drag) == "number" then arrowDrag = v.drag end
+				end
+			end
+			OVX.arrowSpeed, OVX.arrowGravity, OVX.arrowDrag = arrowSpeed, arrowGravity, arrowDrag
+		end))
+	end
+	local function classifyRemote(desc)
+		if not (desc:IsA("RemoteEvent") or desc:IsA("UnreliableRemoteEvent")) then return end
+		local n = string.lower(desc.Name)
+		local path = ""
+		pcall(function() path = string.lower(desc:GetFullName()) end)
+		local isBow = string.find(n, "bow", 1, true)
+			or string.find(path, "bowremotes", 1, true)
+			or string.find(path, "bow", 1, true)
+		if n == "fire" or string.find(n, "fire", 1, true) then
+			if isBow then
+				SA.bowRemotes[desc] = true
+				SA.fireRemotes[desc] = nil
+			else
+				SA.fireRemotes[desc] = true
+			end
+		elseif n == "hit" or string.find(n, "hit", 1, true) or string.find(n, "damage", 1, true) then
+			SA.hitRemotes[desc] = true
+		elseif string.find(n, "launch", 1, true) and isBow then
+			SA.bowRemotes[desc] = true
+			SA.fireRemotes[desc] = nil
+		elseif n == "flight" then
+			SA.flightRemote = desc
+			hookFlight()
+		end
+	end
+	local function removeRemote(desc)
+		SA.fireRemotes[desc], SA.hitRemotes[desc], SA.bowRemotes[desc] = nil, nil, nil
+		if SA.flightRemote == desc then
+			SA.flightRemote = nil
+			hookFlight()
+		end
+	end
+	local function registerRemoteBuckets()
+		table.clear(SA.fireRemotes)
+		table.clear(SA.hitRemotes)
+		table.clear(SA.bowRemotes)
+		SA.flightRemote = nil
+		SA.pendingId, SA.pendingAt = nil, 0
+		local containers = { RepStorage }
+		for _, obj in ipairs(Workspace:GetChildren()) do
+			if obj:IsA("Folder") or obj:IsA("Configuration") then
+				containers[#containers + 1] = obj
+			end
+		end
+		-- One-time / on-demand bucket build; subsequent remotes are classified
+		-- incrementally by DescendantAdded, not by a periodic descendant sweep.
+		for _, root in ipairs(containers) do
+			for _, desc in ipairs(root:GetDescendants()) do classifyRemote(desc) end
+		end
+		if FireRemote then SA.fireRemotes[FireRemote] = true end
+		if HitRemote then SA.hitRemotes[HitRemote] = true end
+		if BowFire then SA.bowRemotes[BowFire] = true; SA.fireRemotes[BowFire] = nil end
+		if BowLaunch then SA.bowRemotes[BowLaunch] = true; SA.fireRemotes[BowLaunch] = nil end
+		if BowHit then SA.hitRemotes[BowHit] = true end
+		hookFlight()
+	end
+	function SA.rescan()
+		registerRemoteBuckets()
+		SA.refreshNpcs(true)
+	end
+	OVX.saRescan = SA.rescan
+	OVX.saNpcList = SA.npcList
+	OVX.saRefreshNpcs = SA.refreshNpcs
+	bind(RepStorage.DescendantAdded:Connect(function(obj) classifyRemote(obj) end))
+	bind(RepStorage.DescendantRemoving:Connect(function(obj) removeRemote(obj) end))
+	bind(Workspace.DescendantAdded:Connect(function(obj)
+		addNpcModel(obj)
+		classifyRemote(obj)
+	end))
+	bind(Workspace.DescendantRemoving:Connect(function(obj)
+		removeNpcModel(obj)
+		removeRemote(obj)
+	end))
+	SA.refreshNpcs(true)
+	registerRemoteBuckets()
 	local bowFlightHooked = false
 	local function refreshBowRemotes()
 		if not (BowFire and BowLaunch and BowHit) then
@@ -1934,7 +2411,7 @@ do
 
 	local function pickBone(model, bone, crosshair, camera)
 		if bone == "Head" then
-			return model:FindFirstChild("Head")
+			return model:FindFirstChild("Head") or model:FindFirstChild("HumanoidRootPart")
 		elseif bone == "Torso / HRP" then
 			return model:FindFirstChild("UpperTorso") or model:FindFirstChild("HumanoidRootPart") or model:FindFirstChild("Torso")
 		else -- Closest part to the crosshair
@@ -1953,21 +2430,21 @@ do
 	end
 	OVX.pickBone = pickBone
 
-	local NPC_FOLDERS = { "Sleepers", "Scientists", "Animals" }
 	local function getTarget()
+		SA.refreshNpcs(false)
 		local camera = Workspace.CurrentCamera
-		if not camera then return nil end
+		if not camera or not flags["sa_enabled"] then return nil end
 		local m = UIS:GetMouseLocation()
 		local crosshair = v2new(m.X, m.Y)
 		local fov      = flags["sa_fov"] or 120
 		local maxd     = flags["sa_max_dist"] or 0
 		local teamChk  = flags["sa_team_check"]
-		local bone     = flags["sa_bone"] or "Head"
+		local bone     = flags["sa_force_head"] ~= false and "Head" or (flags["sa_bone"] or "Head")
 		local lchar = lp.Character
 		local lhrp  = lchar and lchar:FindFirstChild("HumanoidRootPart")
 		local best, bestD = nil, fov
-		local function consider(model)
-			if not model then return end
+		local function consider(model, isNpc)
+			if not model or model == lchar or not model.Parent then return end
 			local hum = model:FindFirstChildOfClass("Humanoid")
 			if not (hum and hum.Health > 0) then return end
 			local hrp = model:FindFirstChild("HumanoidRootPart")
@@ -1977,20 +2454,24 @@ do
 			local sp, on = camera:WorldToViewportPoint(part.Position)
 			if on and sp.Z > 0 then
 				local d = (v2new(sp.X, sp.Y) - crosshair).Magnitude
-				if d <= bestD then bestD = d; best = { part = part, point = part.Position, model = model } end
+				if d <= bestD then
+					local isDummy = model:GetAttribute("RangeDummy") ~= nil
+						or (model.Parent and model.Parent.Name == "Dummies")
+					bestD = d
+					best = {
+						part = part, point = part.Position, model = model,
+						isNpc = isNpc and not isDummy, isDummy = isDummy and true or false,
+					}
+				end
 			end
 		end
 		for _, pl in ipairs(Players:GetPlayers()) do
-			if pl ~= lp and not (teamChk and sameTeam(pl)) then consider(pl.Character) end
+			if pl ~= lp and not (teamChk and sameTeam(pl)) then consider(pl.Character, false) end
 		end
 		if flags["sa_target_npc"] ~= false then
-			for _, fname in ipairs(NPC_FOLDERS) do
-				local folder = Workspace:FindFirstChild(fname)
-				if folder then for _, mdl in ipairs(folder:GetChildren()) do consider(mdl) end end
+			for _, mdl in ipairs(SA.npcList) do
+				if mdl.Parent then consider(mdl, true) end
 			end
-			local gr = Workspace:FindFirstChild("GunRange")
-			local dum = gr and gr:FindFirstChild("Dummies")
-			if dum then for _, mdl in ipairs(dum:GetChildren()) do consider(mdl) end end
 		end
 		return best
 	end
@@ -2006,7 +2487,7 @@ do
 	local bowHvDone = false
 	local function bowHeldView(cf)
 		local orig = bowOrigHV
-		if not (saActive and flags and flags["sa_enabled"]) then
+		if not (saActive and flags and flags["sa_enabled"] and flags["sa_bow_enabled"] ~= false) then
 			return orig and orig(cf) or nil
 		end
 		local tool = lp.Character and lp.Character:FindFirstChildOfClass("Tool")
@@ -2067,103 +2548,142 @@ do
 		end
 		bowOrigHV, bowHVTarget, bowHvDone = nil, nil, false
 	end })
-	local saFrame = 0
-	bind(RunService.RenderStepped:Connect(function()
-		local on = saActive and flags["sa_enabled"]
-		if on then
-			refreshBowRemotes()
-			fovCircle.Visible = flags["sa_show_fov"] and true or false
-			local m = UIS:GetMouseLocation()
-			fovCircle.Position = v2new(m.X, m.Y)
-			fovCircle.Radius = flags["sa_fov"] or 120
-			-- target scan every other frame: the NPC folder scan + bone pick
-			-- (WorldToViewportPoint per part) is wasted work at full frame rate
-			saFrame = saFrame + 1
-			OVX.saScanAt = os.clock()
-			if saFrame % 2 == 1 then
-				local okG, res = pcall(getTarget)
-				if okG then
-					_saTarget = res
-				else
-					OVX.saErr = tostring(res)
-					_saTarget = nil
-				end
-			end
-			OVX.saTarget = _saTarget
-			-- snapline + target crosshair: green = clear eye→target ray,
-			-- red = covered (the same check that triggers the gun peek)
-			local tgt = _saTarget
-			local cam = Workspace.CurrentCamera
-			if cam and (flags["sa_snapline"] or flags["sa_cross"]) and tgt
-				and tgt.part and tgt.part.Parent then
-				local sp, onScreen = cam:WorldToViewportPoint(tgt.part.Position)
-				if onScreen and sp.Z > 0 then
-					local covered = not rayClear(cam.CFrame.Position, tgt.part.Position, tgt.model)
-					local col = covered and c3(255, 60, 60) or c3(60, 255, 60)
-					local tp = v2new(sp.X, sp.Y)
-					if flags["sa_snapline"] then
-						snapLine.From = v2new(m.X, m.Y)
-						snapLine.To = tp
-						snapLine.Color = col
-						snapLine.Visible = true
-					else
-						snapLine.Visible = false
-					end
-					if flags["sa_cross"] then
-						crossV.From = v2new(tp.X, tp.Y - 6); crossV.To = v2new(tp.X, tp.Y + 6)
-						crossH.From = v2new(tp.X - 6, tp.Y); crossH.To = v2new(tp.X + 6, tp.Y)
-						crossV.Color = col; crossH.Color = col
-						crossV.Visible = true; crossH.Visible = true
-					else
-						crossV.Visible = false; crossH.Visible = false
-					end
-				else
-					snapLine.Visible = false; crossV.Visible = false; crossH.Visible = false
-				end
-			else
-				snapLine.Visible = false; crossV.Visible = false; crossH.Visible = false
-			end
-		else
-			fovCircle.Visible = false
-			snapLine.Visible = false; crossV.Visible = false; crossH.Visible = false
+	local _saColor = c3(60, 255, 60)
+	local lastScanAt, lastBowAt = 0, 0
+	bind(RunService.Heartbeat:Connect(function()
+		if not (saActive and flags["sa_enabled"]) then
 			_saTarget = nil
 			OVX.saTarget = nil
+			return
+		end
+		local now = os.clock()
+		local hz = math.clamp(tonumber(flags["sa_scan_hz"]) or 12, 4, 30)
+		if now - lastScanAt >= 1 / hz then
+			lastScanAt = now
+			local okG, res = pcall(getTarget)
+			if okG then _saTarget = res else OVX.saErr = tostring(res); _saTarget = nil end
+			OVX.saTarget = _saTarget
+			OVX.saScanAt = now
+			if _saTarget and _saTarget.part and _saTarget.part.Parent then
+				local cam = Workspace.CurrentCamera
+				local covered = cam and not rayClear(cam.CFrame.Position, _saTarget.part.Position, _saTarget.model)
+				_saColor = covered and c3(255, 60, 60) or c3(60, 255, 60)
+			end
+		end
+		if now - lastBowAt >= 1 then
+			lastBowAt = now
+			pcall(refreshBowRemotes)
+		end
+	end))
+	bind(RunService.RenderStepped:Connect(function()
+		local on = saActive and flags["sa_enabled"]
+		if not on then
+			fovCircle.Visible = false
+			snapLine.Visible = false; crossV.Visible = false; crossH.Visible = false
+			return
+		end
+		local m = UIS:GetMouseLocation()
+		fovCircle.Visible = flags["sa_show_fov"] and true or false
+		fovCircle.Position = v2new(m.X, m.Y)
+		fovCircle.Radius = flags["sa_fov"] or 120
+		local tgt = _saTarget
+		local allowNpc = flags["sa_snapline_npc"] ~= false
+		local canDraw = (flags["sa_snapline"] or flags["sa_cross"]) and tgt
+			and tgt.part and tgt.part.Parent and (allowNpc or not tgt.isNpc)
+		if not canDraw then
+			snapLine.Visible = false; crossV.Visible = false; crossH.Visible = false
+			return
+		end
+		local cam = Workspace.CurrentCamera
+		if not cam then
+			snapLine.Visible = false; crossV.Visible = false; crossH.Visible = false
+			return
+		end
+		local sp, onScreen = cam:WorldToViewportPoint(tgt.part.Position)
+		if not (onScreen and sp.Z > 0) then
+			snapLine.Visible = false; crossV.Visible = false; crossH.Visible = false
+			return
+		end
+		local tp = v2new(sp.X, sp.Y)
+		if flags["sa_snapline"] then
+			snapLine.From = v2new(m.X, m.Y); snapLine.To = tp
+			snapLine.Color = _saColor; snapLine.Visible = true
+		else
+			snapLine.Visible = false
+		end
+		if flags["sa_cross"] then
+			crossV.From = v2new(tp.X, tp.Y - 6); crossV.To = v2new(tp.X, tp.Y + 6)
+			crossH.From = v2new(tp.X - 6, tp.Y); crossH.To = v2new(tp.X + 6, tp.Y)
+			crossV.Color = _saColor; crossH.Color = _saColor
+			crossV.Visible = true; crossH.Visible = true
+		else
+			crossV.Visible = false; crossH.Visible = false
 		end
 	end))
 
-	-- install the redirect hook (firearms SA + bow SA share one __namecall hook)
-	if FireRemote and HitRemote
+	-- Integrated remote jack: the original game-specific Fire/Hit path plus
+	-- the attached script's multi-method fire/hit/damage remote buckets.
+	if (FireRemote or next(SA.fireRemotes) ~= nil or next(SA.hitRemotes) ~= nil or next(SA.bowRemotes) ~= nil)
 		and hookmetamethod and newcclosure and getnamecallmethod then
-		local firingOwn  = false  -- guard: our own Hit claim (firearms)
-		local pendingId  = nil    -- seed suppression (firearms)
+		local firingOwn = false
 		local hasCheckcaller = type(checkcaller) == "function"
-
-		-- ── single shared hook (guns + bows) ────────────────────────────────────
+		local function dispatchInstantHits(claimId, part, hitPoint)
+			if flags["sa_instant_hit"] == false or claimId == nil or not (part and part.Parent) then return end
+			local serverTime = Workspace:GetServerTimeNow()
+			for remote in pairs(SA.hitRemotes) do
+				pcall(function() remote:FireServer(claimId, 1, part, hitPoint, serverTime) end)
+			end
+		end
+		local function sendClaims(claimId, part, hitPoint)
+			firingOwn = true
+			pcall(dispatchInstantHits, claimId, part, hitPoint)
+			firingOwn = false
+		end
+		local function sendDelayedClaim(claimId, part, hitPoint)
+			if not HitRemote then return end
+			firingOwn = true
+			pcall(function() HitRemote:FireServer(claimId, 1, part, hitPoint, Workspace:GetServerTimeNow()) end)
+			firingOwn = false
+		end
+		local function rememberClaim(claimId)
+			if claimId == nil then return end
+			SA.pendingId, SA.pendingAt = claimId, os.clock()
+		end
+		local function rewriteFireArgs(args, tgt)
+			if SA.pendingId and os.clock() - SA.pendingAt > 1.5 then SA.pendingId = nil end
+			local livePoint = tgt.part.Position
+			local origin
+			for i, v in ipairs(args) do
+				if typeof(v) == "Vector3" and v.Magnitude > 0.001 then
+					if origin == nil and i == 1 then
+						origin = v
+					elseif origin ~= nil and i == 2 then
+						args[i] = (livePoint - origin).Unit
+					elseif math.abs(v.Magnitude - 1) < 0.05 and origin ~= nil then
+						args[i] = (livePoint - origin).Unit
+					end
+				elseif type(v) == "table" and v.id ~= nil then
+					rememberClaim(v.id)
+				end
+			end
+			if SA.pendingId == nil and args[3] ~= nil then rememberClaim(args[3]) end
+			return args, livePoint
+		end
 		local old
 		old = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
-			if firingOwn then return old(self, ...) end
+			if firingOwn or not saActive then return old(self, ...) end
 			local notOurs = not (hasCheckcaller and checkcaller())
 			if notOurs then
 				local method = getnamecallmethod()
-				if method == "FireServer" then
-					-- ── FIREARMS SA ──────────────────────────────────────────────
-					-- Guns are instant-hit; just redirect the direction vector
-					-- and claim the hit with the packet's own claim id.
-					if self == FireRemote and saActive and flags and flags["sa_enabled"] then
+				if method == "FireServer" and flags["sa_enabled"] and flags["sa_remote_jack"] ~= false then
+					-- FirearmsRemotes.Fire: known packet shape + gun peek.
+					if self == FireRemote then
 						local a = { ... }
 						local tgt = _saTarget
 						if tgt and typeof(a[1]) == "Vector3" then
-							-- read live position from the part so stale scan pos doesn't miss
 							local livePoint = (tgt.part and tgt.part.Parent and tgt.part.Position) or tgt.point
-							-- client-claim grading: Fire a[4] = { id = claimCount, t } —
-							-- claims must quote THAT id; the seed (a[3]) is not one
 							local claim = a[4]
 							local claimId = typeof(claim) == "table" and type(claim.id) == "number" and claim.id or nil
-							-- GUN PEEK: origin untouched (the server validates it against
-							-- the real muzzle). Covered target → sidestep the character
-							-- so the muzzle clears cover; this shot still goes out
-							-- naturally from the old spot, the next ones fire from
-							-- around cover, legally. Uncovered → plain SA redirect.
 							if flags["bp_enabled"] and typeof(livePoint) == "Vector3"
 								and not rayClear(a[1], livePoint, tgt.model) then
 								gunPeekStart(tgt, a[1])
@@ -2171,49 +2691,59 @@ do
 							end
 							local aimPart, aimPoint = tgt.part, livePoint
 							a[2] = (aimPoint - a[1]).Unit
-							-- the game's own claim follows the ORIGINAL ray (cover/wall
-							-- behind the target) — suppress every pellet of this shot id
-							pendingId = claimId
+							if claimId then rememberClaim(claimId) end
 							OVX.saRedirectAt = os.clock()
 							local ret = old(self, unpack(a))
 							local tool = lp.Character and lp.Character:FindFirstChildOfClass("Tool")
 							local speed = (tool and tonumber(tool:GetAttribute("BulletSpeed"))) or 1e4
 							local travel = (aimPoint - a[1]).Magnitude / math.max(speed, 1)
-							-- fire debug stamp (read via the bridge): what this shot did
 							OVX.saFireDebug = {
 								t = os.clock(), tool = tool and tool.Name or "?",
 								peek = bpHome ~= nil, claim = claimId,
-								dist = math.floor((aimPoint - a[1]).Magnitude + 0.5)
+								dist = math.floor((aimPoint - a[1]).Magnitude + 0.5),
 							}
 							if claimId then
-								task.delay(travel, function()
-									firingOwn = true
-									pcall(function() HitRemote:FireServer(claimId, 1, aimPart, aimPoint, workspace:GetServerTimeNow()) end)
-									firingOwn = false
-								end)
+								if flags["sa_instant_hit"] ~= false then
+									sendClaims(claimId, aimPart, aimPoint)
+								else
+									task.delay(travel, function() sendDelayedClaim(claimId, aimPart, aimPoint) end)
+								end
 							end
 							return ret
 						end
-
-					-- ── BOW SA (gun-style: redirect the launch, let the server's
-					-- own flight claim land on the target) ────────────────────────
-					-- Fire:   a[1]=direction, a[4]=claimInfo{t, o=muzzle origin}
-					-- Launch: a[1]=direction, a[2]=claimInfo{t, o=muzzle origin}
-					-- BowHit[1] is a server-generated flight id (not a seed). The
-					-- client already claims on real arrow collision, so rewriting
-					-- Hit would forge a claim the server can reject. Fix the FLIGHT
-					-- instead: arc-solve from the packet's true launch origin.
-					elseif self == BowFire or self == BowLaunch then
+					end
+					-- Generic fire/damage remotes discovered by the bucket scan.
+					if SA.fireRemotes[self] and not SA.bowRemotes[self] and self ~= FireRemote then
+						local tgt = _saTarget
+						if tgt and tgt.part and tgt.part.Parent then
+							local args = { ... }
+							local rewritten, livePoint = rewriteFireArgs(args, tgt)
+							local ret = old(self, unpack(rewritten))
+							sendClaims(SA.pendingId, tgt.part, livePoint)
+							return ret
+						end
+					end
+					-- Bow/launch remotes: held view already bends the shot.
+					if self == BowFire or self == BowLaunch or SA.bowRemotes[self] then
 						OVX.bowFireCount = (OVX.bowFireCount or 0) + 1
-						-- direction is already aimed via shared.HeldViewCFrame;
-						-- do NOT rewrite the packet or the client/server sims split
+						if flags["sa_bow_enabled"] ~= false then
+							local tgt = _saTarget
+							local a = { ... }
+							local claim = a[4]
+							local claimId = type(claim) == "table" and type(claim.id) == "number" and claim.id or a[3]
+							if tgt and tgt.part and tgt.part.Parent and claimId then
+								rememberClaim(claimId)
+								sendClaims(claimId, tgt.part, tgt.part.Position)
+							end
+						end
 						return old(self, ...)
-
-					-- ── HIT suppression: firearms ─────────────────────────────────
-					elseif self == HitRemote then
+					end
+					-- Suppress the game's stale original claim for this shot id.
+					if (SA.hitRemotes[self] or self == HitRemote) and SA.pendingId ~= nil
+						and os.clock() - SA.pendingAt < 1.5 then
 						local a = { ... }
-						if not firingOwn and pendingId ~= nil and a[1] == pendingId then
-							pendingId = nil
+						if a[1] == SA.pendingId then
+							SA.pendingId = nil
 							return
 						end
 					end
@@ -2253,7 +2783,6 @@ end
 do
 	local hasInput = type(mouse1press) == "function" and type(mouse1release) == "function"
 	local lastClick, clicking = 0, false
-	local NPC_FOLDERS = { "Sleepers", "Scientists", "Animals" }
 	local BOW_NAMES = {
 		["Hunting Bow"] = true, ["Compound Bow"] = true, ["Mini Crossbow"] = true,
 		["Blow Pipe"] = true, Speargun = true,
@@ -2287,7 +2816,7 @@ do
 		local crosshair = v2new(m.X, m.Y)
 		local fov = flags["sa_fov"] or 120 -- single FOV source: Silent Aim
 		local maxd = flags["tb_max_dist"] or flags["sa_max_dist"] or 0
-		local bone = flags["sa_bone"] or "Head"
+		local bone = flags["sa_force_head"] ~= false and "Head" or (flags["sa_bone"] or "Head")
 		local teamChk = flags["sa_team_check"]
 		local lhrp = char and char:FindFirstChild("HumanoidRootPart")
 		local best, bestD = nil, fov
@@ -2313,18 +2842,15 @@ do
 			if pl ~= lp and not (teamChk and sameTeam(pl)) then consider(pl.Character) end
 		end
 		if flags["tb_npc"] ~= false then
-			for _, fname in ipairs(NPC_FOLDERS) do
-				local folder = Workspace:FindFirstChild(fname)
-				if folder then for _, mdl in ipairs(folder:GetChildren()) do consider(mdl) end end
+			for _, mdl in ipairs(OVX.saNpcList or {}) do
+				if mdl.Parent then consider(mdl) end
 			end
-			local gr = Workspace:FindFirstChild("GunRange")
-			local dum = gr and gr:FindFirstChild("Dummies")
-			if dum then for _, mdl in ipairs(dum:GetChildren()) do consider(mdl) end end
 		end
 		return best
 	end
 	-- OVX menu / game UI holds the cursor away from center: never fire then
 	local function menuUp()
+		if library.menu_visible == true or (nativeWindow and nativeWindow._compatMenuVisible) then return true end
 		local ok, mb = pcall(function() return UIS.MouseBehavior end)
 		if ok and mb == Enum.MouseBehavior.LockCenter then return false end
 		local cam = Workspace.CurrentCamera
@@ -4011,7 +4537,52 @@ do
 	local function mount(gui)
 		pcall(function() gui.Parent = guiParent end)
 	end
-	local TXT = c3(220, 220, 232)
+	local HT = {
+		bg       = c3(12, 12, 17),
+		panel    = c3(20, 20, 27),
+		lpanel   = c3(26, 26, 34),
+		outline  = c3(0, 0, 0),
+		outline2 = c3(58, 58, 72),
+		accent   = c3(155, 105, 230),
+		purple   = c3(190, 155, 255),
+		equipped = c3(48, 36, 72),
+		text     = c3(235, 235, 245),
+		muted    = c3(160, 160, 175),
+	}
+	local TXT = HT.muted
+	local function hudPanel(root)
+		root.BackgroundColor3 = HT.panel
+		root.BackgroundTransparency = 0.04
+		root.BorderSizePixel = 0
+		local corner = Instance.new("UICorner", root)
+		corner.CornerRadius = UDim.new(0, 7)
+		local stroke = Instance.new("UIStroke", root)
+		stroke.Thickness = 1
+		stroke.Color = HT.outline2
+		stroke.Transparency = 0.35
+		local grad = Instance.new("UIGradient", root)
+		grad.Rotation = 90
+		grad.Color = ColorSequence.new(
+			ColorSequenceKeypoint.new(0, HT.lpanel),
+			ColorSequenceKeypoint.new(1, HT.panel)
+		)
+		local bar = Instance.new("Frame")
+		bar.Name = "AccentBar"
+		bar.BackgroundColor3 = HT.accent
+		bar.BorderSizePixel = 0
+		bar.Size = UDim2.new(1, 0, 0, 2)
+		bar.Position = UDim2.new(0, 0, 0, 0)
+		bar.Parent = root
+		Instance.new("UICorner", bar).CornerRadius = UDim.new(0, 2)
+		local dot = Instance.new("Frame")
+		dot.Name = "AccentDot"
+		dot.BackgroundColor3 = HT.accent
+		dot.BorderSizePixel = 0
+		dot.Size = UDim2.fromOffset(5, 5)
+		dot.Position = UDim2.fromOffset(8, 8)
+		dot.Parent = root
+		Instance.new("UICorner", dot).CornerRadius = UDim.new(0, 3)
+	end
 	local function playerOfModel(m)
 		for _, p in ipairs(Players:GetPlayers()) do
 			if p.Character == m then return p end
@@ -4058,13 +4629,17 @@ do
 	-- shared viewer row: icon + name, 26px tall
 	local function makeRow(parent, order)
 		local r = Instance.new("Frame")
-		r.BackgroundColor3 = c3(30, 30, 36)
-		r.BackgroundTransparency = 0.2
+		r.BackgroundColor3 = HT.lpanel
+		r.BackgroundTransparency = 0.08
 		r.BorderSizePixel = 0
 		r.Size = UDim2.new(1, 0, 0, 26)
 		r.LayoutOrder = order
 		r.Parent = parent
-		Instance.new("UICorner", r).CornerRadius = UDim.new(0, 5)
+		Instance.new("UICorner", r).CornerRadius = UDim.new(0, 6)
+		local rowStroke = Instance.new("UIStroke", r)
+		rowStroke.Thickness = 1
+		rowStroke.Color = HT.outline2
+		rowStroke.Transparency = 0.55
 		local ic = Instance.new("ImageLabel")
 		ic.BackgroundTransparency = 1
 		ic.Size = UDim2.fromOffset(20, 20)
@@ -4074,7 +4649,7 @@ do
 		st.BackgroundTransparency = 1
 		st.Font = Enum.Font.Gotham
 		st.TextSize = 11
-		st.TextColor3 = c3(225, 225, 235)
+		st.TextColor3 = HT.text
 		st.TextXAlignment = Enum.TextXAlignment.Left
 		st.TextTruncate = Enum.TextTruncate.AtEnd
 		st.Position = UDim2.new(0, 27, 0, 0)
@@ -4128,26 +4703,30 @@ do
 	local tiRoot = Instance.new("Frame")
 	tiRoot.AnchorPoint = v2new(0.5, 0)
 	tiRoot.Position = UDim2.new(0.5, 0, 0.5, 44)
-	tiRoot.Size = UDim2.fromOffset(300, 74)
-	tiRoot.BackgroundColor3 = c3(10, 10, 12)
-	tiRoot.BackgroundTransparency = 0.45
-	tiRoot.BorderSizePixel = 0
+	tiRoot.Size = UDim2.fromOffset(320, 84)
 	tiRoot.Parent = tiGui
-	Instance.new("UICorner", tiRoot).CornerRadius = UDim.new(0, 8)
-	local tiStroke = Instance.new("UIStroke", tiRoot)
-	tiStroke.Thickness = 1
-	tiStroke.Color = c3(96, 120, 190)
-	tiStroke.Transparency = 0.25
+	hudPanel(tiRoot)
+	local tiCaption = Instance.new("TextLabel")
+	tiCaption.BackgroundTransparency = 1
+	tiCaption.Font = Enum.Font.GothamBold
+	tiCaption.TextSize = 10
+	tiCaption.TextColor3 = HT.accent
+	tiCaption.TextXAlignment = Enum.TextXAlignment.Left
+	tiCaption.TextYAlignment = Enum.TextYAlignment.Center
+	tiCaption.Position = UDim2.new(0, 18, 0, 2)
+	tiCaption.Size = UDim2.new(1, -24, 0, 14)
+	tiCaption.Parent = tiRoot
+	tiCaption.Text = "TARGET INFO"
 	local tiText = Instance.new("TextLabel")
 	tiText.BackgroundTransparency = 1
 	tiText.Font = Enum.Font.Gotham
-	tiText.TextSize = 12
-	tiText.TextColor3 = c3(235, 235, 245)
+	tiText.TextSize = 11
+	tiText.TextColor3 = HT.text
 	tiText.TextXAlignment = Enum.TextXAlignment.Left
-	tiText.TextYAlignment = Enum.TextYAlignment.Center
+	tiText.TextYAlignment = Enum.TextYAlignment.Top
 	tiText.TextWrapped = true
-	tiText.Position = UDim2.new(0, 10, 0, 0)
-	tiText.Size = UDim2.new(1, -20, 1, 0)
+	tiText.Position = UDim2.new(0, 10, 0, 20)
+	tiText.Size = UDim2.new(1, -20, 1, -24)
 	tiText.Parent = tiRoot
 	tiText.Text = ""
 	makeDraggable(tiRoot, tiRoot)
@@ -4164,24 +4743,17 @@ do
 	invRoot.AnchorPoint = v2new(1, 0)
 	invRoot.Position = UDim2.new(1, -12, 0, 120)
 	invRoot.Size = UDim2.fromOffset(252, 88)
-	invRoot.BackgroundColor3 = c3(14, 14, 16)
-	invRoot.BackgroundTransparency = 0.25
-	invRoot.BorderSizePixel = 0
 	invRoot.Parent = invGui
-	Instance.new("UICorner", invRoot).CornerRadius = UDim.new(0, 8)
-	local invStroke = Instance.new("UIStroke", invRoot)
-	invStroke.Thickness = 1
-	invStroke.Color = c3(70, 70, 82)
-	invStroke.Transparency = 0.3
+	hudPanel(invRoot)
 	local invTitle = Instance.new("TextLabel")
 	invTitle.BackgroundTransparency = 1
 	invTitle.Font = Enum.Font.GothamBold
-	invTitle.TextSize = 12
-	invTitle.TextColor3 = c3(235, 235, 245)
+	invTitle.TextSize = 11
+	invTitle.TextColor3 = HT.text
 	invTitle.TextXAlignment = Enum.TextXAlignment.Left
 	invTitle.TextTruncate = Enum.TextTruncate.AtEnd
-	invTitle.Position = UDim2.new(0, 10, 0, 0)
-	invTitle.Size = UDim2.new(1, -40, 0, 26)
+	invTitle.Position = UDim2.new(0, 18, 0, 0)
+	invTitle.Size = UDim2.new(1, -48, 0, 26)
 	invTitle.Parent = invRoot
 	invTitle.Text = "INVENTORY"
 	makeDraggable(invRoot, invTitle)
@@ -4198,13 +4770,13 @@ do
 		local h = Instance.new("TextLabel")
 		h.BackgroundTransparency = 1
 		h.Font = Enum.Font.GothamBold
-		h.TextSize = 11
-		h.TextColor3 = c3(150, 170, 255)
+		h.TextSize = 10
+		h.TextColor3 = HT.purple
 		h.TextXAlignment = Enum.TextXAlignment.Left
 		h.Size = UDim2.new(1, 0, 0, 16)
 		h.LayoutOrder = order
 		h.Parent = invBody
-		h.Text = txt
+		h.Text = "◆ " .. txt
 		return h
 	end
 	local hotHeader = sectionHeader("HOTBAR", 1)
@@ -4250,23 +4822,16 @@ do
 	local staffRoot = Instance.new("Frame")
 	staffRoot.Position = UDim2.new(0, 12, 0, 120)
 	staffRoot.Size = UDim2.fromOffset(250, 26)
-	staffRoot.BackgroundColor3 = c3(14, 14, 16)
-	staffRoot.BackgroundTransparency = 0.25
-	staffRoot.BorderSizePixel = 0
 	staffRoot.Parent = staffGui
-	Instance.new("UICorner", staffRoot).CornerRadius = UDim.new(0, 8)
-	local staffStroke = Instance.new("UIStroke", staffRoot)
-	staffStroke.Thickness = 1
-	staffStroke.Color = c3(70, 70, 82)
-	staffStroke.Transparency = 0.3
+	hudPanel(staffRoot)
 	local staffTitle = Instance.new("TextLabel")
 	staffTitle.BackgroundTransparency = 1
 	staffTitle.Font = Enum.Font.GothamBold
-	staffTitle.TextSize = 12
-	staffTitle.TextColor3 = c3(255, 215, 0)
+	staffTitle.TextSize = 11
+	staffTitle.TextColor3 = HT.accent
 	staffTitle.TextXAlignment = Enum.TextXAlignment.Left
-	staffTitle.Position = UDim2.new(0, 10, 0, 0)
-	staffTitle.Size = UDim2.new(1, -40, 0, 26)
+	staffTitle.Position = UDim2.new(0, 18, 0, 0)
+	staffTitle.Size = UDim2.new(1, -48, 0, 26)
 	staffTitle.Parent = staffRoot
 	staffTitle.Text = "STAFF IN SERVER"
 	local staffBody = Instance.new("Frame")
@@ -4278,7 +4843,7 @@ do
 	staffText.BackgroundTransparency = 1
 	staffText.Font = Enum.Font.Gotham
 	staffText.TextSize = 11
-	staffText.TextColor3 = TXT
+	staffText.TextColor3 = HT.muted
 	staffText.TextXAlignment = Enum.TextXAlignment.Left
 	staffText.TextYAlignment = Enum.TextYAlignment.Top
 	staffText.Size = UDim2.new(1, 0, 1, 0)
@@ -4344,6 +4909,7 @@ do
 	local sticky
 	bind(RunService.Heartbeat:Connect(function()
 		local now = os.clock()
+		local hudInterval = 1 / math.clamp(tonumber(flags["ui_hud_hz"]) or 4, 1, 12)
 		local tiOn = flags["hud_targetinfo"] ~= false
 		local invOn = flags["invwin_enabled"] == true
 		tiRoot.Visible = tiOn
@@ -4352,7 +4918,7 @@ do
 		if not (tiOn or invOn) and flags["staffwin_enabled"] ~= true then return end
 
 		-- target info + inventory at 4 Hz
-		if (tiOn or invOn) and now - hudAt > 0.25 then
+		if (tiOn or invOn) and now - hudAt >= hudInterval then
 			hudAt = now
 			local myRoot = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
 			local myPos = myRoot and myRoot.Position
@@ -4423,7 +4989,7 @@ do
 			if isAI then
 				local hum = tgt.model:FindFirstChildOfClass("Humanoid")
 				local hpTxt = hum and ("HP %d"):format(floor(hum.Health)) or "HP ?"
-				invTitle.Text = ("TARGET — %s (AI)"):format(tgt.model.Name)
+				invTitle.Text = ("TARGET  •  %s (AI)"):format(tgt.model.Name)
 				hideFrom(hotRows, 1, MAX_HOT_ROWS)
 				hideFrom(armRows, 1, MAX_ARM_ROWS)
 				if invH ~= 88 then
@@ -4439,7 +5005,7 @@ do
 					armHolder.Size = UDim2.new(1, 0, 0, 0)
 				end
 				if tiRoot.Visible then
-					tiText.Text = ("LOCK %s  %.0fm  %s"):format(tgt.model.Name, bd or 0, hpTxt)
+					tiText.Text = ("◈ LOCK %s  %.0fm  %s"):format(tgt.model.Name, bd or 0, hpTxt)
 				end
 			elseif not best then
 				invTitle.Text = "INVENTORY"
@@ -4457,7 +5023,7 @@ do
 					lastArmH = 0
 					armHolder.Size = UDim2.new(1, 0, 0, 0)
 				end
-				tiText.Text = "no player nearby"
+				tiText.Text = "◈  no player nearby"
 			else
 				local char = best.Character
 				local gun = char and char:FindFirstChildOfClass("Tool")
@@ -4488,7 +5054,7 @@ do
 				end
 				local hum = char and char:FindFirstChildOfClass("Humanoid")
 				local hpTxt = hum and ("HP %d"):format(floor(hum.Health)) or "HP ?"
-				invTitle.Text = ("INVENTORY — %s"):format(best.Name)
+				invTitle.Text = ("INVENTORY  •  %s"):format(best.Name)
 				local hotN = 0
 				local function hotRow(name, equipped)
 					hotN += 1
@@ -4497,7 +5063,7 @@ do
 					if r.lastName ~= name or r.lastEq ~= equipped then
 						r.lastName, r.lastEq = name, equipped
 						r.text.Text = (equipped and "[E] " or "") .. name
-						r.frame.BackgroundColor3 = equipped and c3(110, 80, 20) or c3(30, 30, 36)
+						r.frame.BackgroundColor3 = equipped and HT.equipped or HT.lpanel
 					end
 					r.frame.Visible = true
 					applyIcon(r.icon, name)
@@ -4518,7 +5084,7 @@ do
 						if r.lastName ~= name then
 							r.lastName = name
 							r.text.Text = name
-							r.frame.BackgroundColor3 = c3(30, 30, 36)
+							r.frame.BackgroundColor3 = HT.lpanel
 						end
 						r.frame.Visible = true
 						applyIcon(r.icon, name)
@@ -4541,7 +5107,7 @@ do
 					invRoot.Size = UDim2.fromOffset(252, h)
 				end
 				if tiRoot.Visible then
-					tiText.Text = ("%s %s  %.0fm  %s\nGUN: %s\nARMOR: %s\nRES: %s"):format(
+					tiText.Text = ("◈ %s %s  %.0fm  %s\nGUN: %s\nARMOR: %s\nRES: %s"):format(
 						locked and "LOCK" or "NEAR", best.Name, bd or 0, hpTxt,
 						gun and gun.Name or (hasParts and "none" or "far"),
 						#armorParts > 0 and table.concat(armorParts, ", ") or (hasParts and "none" or "far"),
@@ -4558,7 +5124,7 @@ do
 			for name, r in pairs(known) do names[#names + 1] = "• " .. name .. " — " .. r end
 			table.sort(names)
 			staffText.Text = #names > 0 and table.concat(names, "\n") or "nobody flagged\n(scanning every 2s)"
-			staffTitle.Text = ("STAFF IN SERVER (%d)"):format(#names)
+			staffTitle.Text = ("STAFF IN SERVER  •  %d"):format(#names)
 			staffRoot.Size = UDim2.fromOffset(250, 40 + math.max(#names, 1) * 16)
 		end
 	end))
@@ -4586,14 +5152,23 @@ do
 			if fn then fn(v) end
 		end })
 	sa:toggle({ name = "Team Check", flag = "sa_team_check", default = true })
-	sa:toggle({ name = "Target NPCs", flag = "sa_target_npc", default = true, tooltip = "Also lock Sleepers / Scientists / Animals / dummies" })
+	sa:toggle({ name = "Silent Aim NPCs", flag = "sa_target_npc", default = true, tooltip = "Silent Aim lock includes Sleepers / Scientists / Animals / dummies" })
 	sa:toggle({ name = "Show FOV", flag = "sa_show_fov", default = true })
 	sa:toggle({ name = "Snapline", flag = "sa_snapline", default = true, tooltip = "Line from your crosshair to the silent-aim target — green when it's visible, red when covered" })
+	sa:toggle({ name = "Snapline NPCs", flag = "sa_snapline_npc", default = true, tooltip = "Draw snapline / target crosshair for NPC and dummy locks" })
 	sa:toggle({ name = "Target Crosshair", flag = "sa_cross", default = true, tooltip = "Draws a cross on the silent-aim target — green when it's visible, red when covered" })
 	sa:dropdown({ name = "Aim Bone", flag = "sa_bone", items = { "Head", "Torso / HRP", "Closest" }, default = "Head" })
 	sa:slider({ name = "FOV Radius", min = 20, max = 500, default = 120, interval = 1, flag = "sa_fov" })
 	sa:slider({ name = "Bow Lead", min = 0, max = 1.5, default = 1, interval = 0.05, flag = "sa_bow_lead" })
 	sa:slider({ name = "Max Distance", min = 0, max = 5000, default = 0, interval = 10, suffix = "m", flag = "sa_max_dist" })
+	sa:slider({ name = "Scan Rate", min = 4, max = 30, default = 12, interval = 1, suffix = " Hz", flag = "sa_scan_hz", tooltip = "Lower Hz = less CPU; 12 Hz replaces the old every-other-frame Workspace:GetDescendants() scan" })
+	sa:toggle({ name = "Force Head", flag = "sa_force_head", default = true, tooltip = "Head Force from the attached aim core; overrides Aim Bone" })
+	sa:toggle({ name = "Instant Hit", flag = "sa_instant_hit", default = true, tooltip = "Send the rewritten shot's hit claim immediately" })
+	sa:toggle({ name = "Remote Jack", flag = "sa_remote_jack", default = true, tooltip = "Use multi-method Fire/Hit/Damage remote buckets" })
+	sa:toggle({ name = "Bow Lead & Arc", flag = "sa_bow_enabled", default = true, tooltip = "Bend the held view for bows using the ballistic arc solver" })
+	sa:button({ name = "Re-scan Remotes", callback = function()
+		if OVX.saRescan then pcall(OVX.saRescan) end
+	end })
 
 	-- Bow SA shares the same "sa_enabled" toggle as firearms above.
 	-- No separate bow section needed — single flag covers both.
@@ -4620,7 +5195,7 @@ do
 			local fn = library.config_flags and library.config_flags["tb_enabled"]
 			if fn then fn(v) end
 		end })
-	tb:toggle({ name = "Target NPCs", flag = "tb_npc", default = true, tooltip = "Also fire on Sleepers / Scientists / Animals (range dummies always count)" })
+	tb:toggle({ name = "Triggerbot NPCs", flag = "tb_npc", default = true, tooltip = "Triggerbot fires on Sleepers / Scientists / Animals (range dummies always count)" })
 	tb:toggle({ name = "Visible Only (Snapline)", flag = "tb_visible", default = true, tooltip = "Fire only when the target is inside Silent Aim's FOV and the snapline is green (clear line of sight). Turn off to ignore cover." })
 	tb:toggle({ name = "Skip While Holding", flag = "tb_skip_holding", default = true, tooltip = "Pause while your own left button is down so it never fights manual fire" })
 
@@ -4846,6 +5421,28 @@ do
 	gd:toggle({ name = "Guide UI", flag = "gd_open", default = false, callback = function(v)
 		guideGui.Enabled = v
 	end })
+
+	local uiSec = gdCol:section({ name = "Interface" })
+	uiSec:toggle({ name = "Free Mouse", flag = "ui_free_mouse", default = true, tooltip = "Releases the cursor while the Vault menu is open so controls can be clicked", callback = function(v)
+		if window._compatSetMenuVisible then
+			pcall(window._compatSetMenuVisible, library.menu_visible == true, v ~= false)
+		end
+	end })
+	local uiScreen = utility:ScreenSize()
+	local maxW = math.max(500, math.floor(uiScreen.X - 80))
+	local maxH = math.max(420, math.floor(uiScreen.Y - 80))
+	local initW = math.floor(window.frame.Size.X)
+	local initH = math.floor(window.frame.Size.Y)
+	local function applyUiSize()
+		local w = tonumber(flags["ui_width"]) or initW
+		local h = tonumber(flags["ui_height"]) or initH
+		if window.resize then window:resize(w, h) end
+	end
+	uiSec:slider({ name = "Window Width", min = 500, max = maxW, default = initW, interval = 10, suffix = " px", flag = "ui_width", callback = function() applyUiSize() end })
+	uiSec:slider({ name = "Window Height", min = 420, max = maxH, default = initH, interval = 10, suffix = " px", flag = "ui_height", callback = function() applyUiSize() end })
+	uiSec:slider({ name = "HUD Rate", min = 1, max = 12, default = 4, interval = 1, suffix = " Hz", flag = "ui_hud_hz", tooltip = "Target info / inventory / staff overlay refresh rate" })
+	uiSec:label("Drag the purple grip at the bottom-right to resize.")
+	uiSec:label("Mouse wheel over the menu scrolls long tabs.")
 
 	-- desync (v2.1 port) + overlay windows
 	local dcol = miscTab:column()
