@@ -1857,7 +1857,12 @@ do
 			beam.FaceCamera = flags["sf_tracer_face_camera"] ~= false
 			beam.Enabled = true
 		end)
-		pcall(function() beam.Color = ColorSequence.new(color, color) end)
+		pcall(function()
+			beam.Color = ColorSequence.new({
+				ColorSequenceKeypoint.new(0, color),
+				ColorSequenceKeypoint.new(1, color),
+			})
+		end)
 		local record = { instances = { a0, a1, beam } }
 		trackRecord(record)
 		if type(task) == "table" and type(task.delay) == "function" then
@@ -5801,10 +5806,10 @@ do
 		stroke.Transparency = 0.35
 		local grad = Instance.new("UIGradient", root)
 		grad.Rotation = 90
-		grad.Color = ColorSequence.new(
+		grad.Color = ColorSequence.new({
 			ColorSequenceKeypoint.new(0, HT.lpanel),
-			ColorSequenceKeypoint.new(1, HT.panel)
-		)
+			ColorSequenceKeypoint.new(1, HT.panel),
+		})
 		local bar = Instance.new("Frame")
 		bar.Name = "AccentBar"
 		bar.BackgroundColor3 = HT.accent
