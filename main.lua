@@ -461,7 +461,7 @@ end
 setDefaultFlag("sa_enabled", true)
 setDefaultFlag("sa_force_head", false)
 setDefaultFlag("sa_instant_hit", true)
-setDefaultFlag("sa_remote_jack", true)
+setDefaultFlag("wm_range", true)
 setDefaultFlag("sa_target_npc", true)
 setDefaultFlag("sa_snapline_npc", true)
 setDefaultFlag("tb_npc", true)
@@ -660,7 +660,6 @@ local function setCompatFlag(flag, value, force)
 end
 registerFlagSetter("force_head", function(value) setCompatFlag("sa_force_head", value) end)
 registerFlagSetter("instant_hit", function(value) setCompatFlag("sa_instant_hit", value) end)
-registerFlagSetter("remote_jack", function(value) setCompatFlag("sa_remote_jack", value) end)
 registerFlagSetter("sa_npc", function(value) setCompatFlag("sa_target_npc", value) end)
 
 local function keyName(value)
@@ -4219,7 +4218,9 @@ do
 			if notOurs then
 				local method = getnamecallmethod()
 				if method == "FireServer" then
-					if (flags["sa_enabled"] or flags["rb_enabled"]) and flags["sa_remote_jack"] ~= false then
+					-- Silent Aim always rides the remote jack: the Fire/Hit/Damage
+					-- buckets below handle the claim rewrite for the embedded PSilent.
+					if flags["sa_enabled"] or flags["rb_enabled"] then
 					-- FirearmsRemotes.Fire: known packet shape + gun peek.
 					if self == FireRemote then
 						local a = { ... }
@@ -4460,8 +4461,13 @@ end
 -- //   (ported from vault-esp_22: filtergc locates the weapon def/state
 -- //   tables; modded values are rewritten each frame with originals
 -- //   snapshotted so toggling off / unloading restores them)
--- // RANGE OVERRIDE — attribute-based, kept as before
+-- // RANGE OVERRIDE — every gun is raised to the engine's own ceiling
+-- //   readGun() defaults a missing Range attribute to 1000 studs, which is
+-- //   the highest range the game itself treats as valid. Anything past
+-- //   that stops registering, so RANGE_CAP stays at exactly 1000 — never
+-- //   100000 like the old override did.
 -- ================================================================
+local RANGE_CAP = 1000
 local wmActive = true
 local wmTickAt = 0
 do
@@ -4489,7 +4495,7 @@ do
 		"recoilPitch","recoilYaw","recoilMult","kick","kickBack","kickSide","kickTilt",
 		"adsKick","adsRecoil","moveRecoil","hipSpread","adsSpread","pelletSpread",
 		"bloomMax","bloomPerShot","bloomRecovery","aimSway","auto","rpm",
-		"strikeInterval","boltRoll",
+		"strikeInterval","boltRoll","range",
 	}
 	local function snapshot(def)
 		if origDef[def] then return end
@@ -4542,7 +4548,8 @@ do
 		local rapid   = flags["wm_rapidfire"]
 		local rpmV    = flags["wm_rpm"] or 0
 		local fastCycle = flags["wm_fastcycle"]
-		local active = noRec or noSpr or noSway or iAds or autoF or rapid or fastCycle
+		local rangeBoost = flags["wm_range"] == true
+		local active = noRec or noSpr or noSway or iAds or autoF or rapid or fastCycle or rangeBoost
 
 			if active then
 				-- re-scan for new def/state tables only while a mod is enabled
@@ -4582,6 +4589,11 @@ do
 					end
 					-- bloom recovery: instant settle so the client cone never widens
 					def.bloomRecovery = noSpr and 1e6 or o.bloomRecovery
+					-- range: raise to the engine ceiling (RANGE_CAP). Never past it —
+					-- beyond ~1000 studs the shot stops registering at the server.
+					if type(def.range) == "number" or type(o.range) == "number" then
+						def.range = rangeBoost and RANGE_CAP or o.range
+					end
 					-- fast cycle: strip bolt/pump/strike delays from the viewmodel
 					if fastCycle then
 						def.strikeInterval = 0.001
@@ -4648,24 +4660,54 @@ do
 			end
 		end
 
-		-- range override (attribute-based, unchanged)
-		local char = lp.Character
-		local tool = char and char:FindFirstChildOfClass("Tool")
-		if tool then
-			if flags["wm_range"] then
-				if rangeOrig[tool] == nil then rangeOrig[tool] = tool:GetAttribute("Range") or false end
-				if tool:GetAttribute("Range") ~= nil then pcall(function() tool:SetAttribute("Range", 100000) end) end
+		-- range override: raise EVERY gun the local player carries (equipped
+		-- or sitting in the backpack), not just the one in hand — readGun
+		-- reads the Range attribute at equip time, so pre-setting it makes
+		-- the boost apply the moment any gun comes out. RANGE_CAP, never
+		-- past it, so the shot still registers.
+		local function applyRangeTo(tool)
+			if not (tool and tool:IsA("Tool")) then return end
+			if rangeBoost then
+				local cur = tool:GetAttribute("Range")
+				if rangeOrig[tool] == false then return end -- engine already treats this gun as 1000
+				if cur == nil and rangeOrig[tool] == nil then
+					-- game never set a Range attribute: the engine already
+					-- treats it as 1000, nothing to raise
+					rangeOrig[tool] = false
+					return
+				end
+				if rangeOrig[tool] == nil then rangeOrig[tool] = cur end
+				if cur ~= RANGE_CAP then pcall(function() tool:SetAttribute("Range", RANGE_CAP) end) end
 			else
 				local ro = rangeOrig[tool]
-				if ro ~= nil then if ro then pcall(function() tool:SetAttribute("Range", ro) end) end; rangeOrig[tool] = nil end
+				if ro ~= nil then
+					if ro then pcall(function() tool:SetAttribute("Range", ro) end) end
+					rangeOrig[tool] = nil
+				end
+			end
+		end
+		local char = lp.Character
+		if char then
+			for _, t in ipairs(char:GetChildren()) do
+				if t:IsA("Tool") then applyRangeTo(t) end
+			end
+		end
+		local backpack = lp:FindFirstChildOfClass("Backpack")
+		if backpack then
+			for _, t in ipairs(backpack:GetChildren()) do
+				if t:IsA("Tool") then applyRangeTo(t) end
 			end
 		end
 	end))
 
-	-- unload: stop and restore every def we touched
+	-- unload: stop and restore every def we touched, plus the tool attributes
 	bind({ Disconnect = function()
 		wmActive = false
 		for def in pairs(origDef) do pcall(restore, def) end
+		for tool, ro in pairs(rangeOrig) do
+			if ro then pcall(function() tool:SetAttribute("Range", ro) end) end
+			rangeOrig[tool] = nil
+		end
 	end })
 end
 
@@ -6176,7 +6218,10 @@ do
 	sa:slider({ name = "Scan Rate", min = 4, max = 30, default = 12, interval = 1, suffix = " Hz", flag = "sa_scan_hz", tooltip = "Lower Hz = less CPU; 12 Hz replaces the old every-other-frame Workspace:GetDescendants() scan" })
 	sa:toggle({ name = "Force Head", flag = "sa_force_head", default = false, tooltip = "Always aim at heads regardless of the Aim Bone dropdown" })
 	sa:toggle({ name = "Instant Hit", flag = "sa_instant_hit", default = true, tooltip = "Send the rewritten shot's hit claim immediately" })
-	sa:toggle({ name = "Remote Jack", flag = "sa_remote_jack", default = true, tooltip = "Use multi-method Fire/Hit/Damage remote buckets" })
+	-- Remote Jack is not a toggle anymore: the embedded PSilent ALWAYS fires
+	-- its rewritten hit claim straight through the Fire/Hit/Damage remote
+	-- buckets (see the namecall hook), which is also what lets silent hits
+	-- land at any distance.
 	sa:button({ name = "Re-scan Remotes", callback = function()
 		if OVX.saRescan then pcall(OVX.saRescan) end
 	end })
@@ -6193,7 +6238,7 @@ do
 			local fn = library.config_flags and library.config_flags["wm_fastcycle"]
 			if fn then fn(v) end
 		end })
-	wm:toggle({ name = "Range Override", flag = "wm_range", tooltip = "Max the weapon Range attribute (server may ignore)" })
+	wm:toggle({ name = "Range Override", flag = "wm_range", default = true, tooltip = "Raise EVERY gun you carry to the 1000-stud engine ceiling (past it, shots stop registering — never higher)" })
 
 	local tb = column:section({ name = "Triggerbot" })
 	tb:toggle({ name = "Enabled", flag = "tb_enabled" })
