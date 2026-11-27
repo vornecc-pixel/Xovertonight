@@ -737,13 +737,38 @@ local function toggleInfo(info)
 	return out
 end
 
+-- Creating the whole window calls this several hundred times in one stretch.
+-- Coalesce the updates: queue the sections now, flush once on the next defer
+-- (or synchronously when no task scheduler exists), instead of running a full
+-- section + tab + window update per element. Final state is identical, it just
+-- does the work once.
+local refreshQueue, refreshScheduled = {}, false
 local function refreshSection(section)
-	local tab = section and section._compatTab
-	if not tab then return end
-	if section.Update then pcall(section.Update, section) end
-	if tab.Update then pcall(tab.Update, tab) end
-	if nativeWindow and nativeWindow.Update then pcall(nativeWindow.Update, nativeWindow) end
-	if not tab.on and section.Hide then pcall(section.Hide, section) end
+	if section then refreshQueue[section] = true end
+	if refreshScheduled then return end
+	refreshScheduled = true
+	local function flush()
+		refreshScheduled = false
+		local pending, tabsDone = refreshQueue, {}
+		refreshQueue = {}
+		for pendingSection in pairs(pending) do
+			if pendingSection.Update then pcall(pendingSection.Update, pendingSection) end
+			local tab = pendingSection._compatTab
+			if tab then
+				if not tabsDone[tab] then
+					tabsDone[tab] = true
+					if tab.Update then pcall(tab.Update, tab) end
+				end
+				if not tab.on and pendingSection.Hide then pcall(pendingSection.Hide, pendingSection) end
+			end
+		end
+		if nativeWindow and nativeWindow.Update then pcall(nativeWindow.Update, nativeWindow) end
+	end
+	if type(task) == "table" and type(task.defer) == "function" then
+		pcall(task.defer, flush)
+	else
+		flush()
+	end
 end
 
 	local function attachKeybind(keybind, info, section)
@@ -814,8 +839,14 @@ end
 			return self
 		end
 
+		-- Poll the kbds list at 10 Hz instead of every frame: there is one
+		-- of these per keybind, and each used to scan the list per frame.
+		local kbSyncAt = 0
 		local heartbeat = game:GetService("RunService").Heartbeat
 		utility:Connect(heartbeat, function()
+			local now = os.clock()
+			if now - kbSyncAt < 0.1 then return end
+			kbSyncAt = now
 			local kbMode = normalizeKeybindMode(keybind.mode or mode)
 			if kbMode ~= mode then
 				mode = kbMode
@@ -1345,7 +1376,7 @@ function library:window(info)
 		math.clamp(screen.X - 260, 500, 860),
 		math.clamp(screen.Y - 100, 420, 680)
 	)
-	nativeWindow = library:New({ name = info.name or "OVX", size = size }, compatTheme)
+	nativeWindow = library:New({ name = info.name or "OV-X | FREE", size = size }, compatTheme)
 	nativeWindow.frame.Position = utility:RoundVector(screen / 2 - size / 2)
 	nativeWindow:Resize(size)
 
@@ -2009,25 +2040,39 @@ do
 		if OVX.ragebotQuickSync then pcall(OVX.ragebotQuickSync, true) end
 	end
 
+	local ragebotApplying = false
 	function OVX.ragebotApply(on)
 		on = on == true
-		if on and not OVX.ragebotRestore then
-			OVX.ragebotRestore = {}
-			for flag in pairs(ragebotRequired) do
-				OVX.ragebotRestore[flag] = flags[flag]
+		-- Re-entrancy guard: applying the state force-sets ~20 other toggles, each
+		-- of which fires Update. If anything in that chain calls back into here,
+		-- the inner call is dropped so the master toggle can't flap on/off in the
+		-- same click.
+		if ragebotApplying then return flags["rb_enabled"] == true end
+		ragebotApplying = true
+		local ok, err = pcall(function()
+			if on and not OVX.ragebotRestore then
+				OVX.ragebotRestore = {}
+				for flag in pairs(ragebotRequired) do
+					OVX.ragebotRestore[flag] = flags[flag]
+				end
 			end
-		end
-		flags["rb_enabled"] = on
-		if OVX.ragebotQuickSync then pcall(OVX.ragebotQuickSync, on) end
-		if on then
-			OVX.ragebotSync()
-		elseif OVX.ragebotRestore then
-			local saved = OVX.ragebotRestore
-			OVX.ragebotRestore = nil
-			for flag, value in pairs(saved) do
-				setCompatFlag(flag, value, true)
+			flags["rb_enabled"] = on
+			-- Keep BOTH Combat-tab toggles visually in sync with the flag from every
+			-- entry point (main toggle, quick toggle, config load, console setter),
+			-- so one can never show OFF while Ragebot is actually on.
+			if OVX.ragebotQuickSync then pcall(OVX.ragebotQuickSync, on) end
+			if on then
+				OVX.ragebotSync()
+			elseif OVX.ragebotRestore then
+				local saved = OVX.ragebotRestore
+				OVX.ragebotRestore = nil
+				for flag, value in pairs(saved) do
+					setCompatFlag(flag, value, true)
+				end
 			end
-		end
+		end)
+		ragebotApplying = false
+		if not ok then OVX.ragebotErr = tostring(err) end
 		return on
 	end
 
@@ -2272,9 +2317,30 @@ do
 		if clear then table.clear(vmOriginals) end
 	end
 
-	local HAND_WORDS = { "hand", "arm", "sleeve", "glove", "wrist", "forearm" }
+	-- Word-boundary tokens: "Handguard"/"Handgrip" are gun parts, and a plain
+	-- find(name, "hand") misclassifies them as hands, so the Hand Chams section
+	-- painted the whole gun. Split camelCase and separators into tokens and
+	-- classify by the closest matching node in the part's ancestor chain;
+	-- a shared "Arms" viewmodel folder can no longer swallow gun parts.
+	local HAND_WORDS = {
+		hand = true, hands = true, arm = true, arms = true,
+		forearm = true, forearms = true, sleeve = true, sleeves = true,
+		glove = true, gloves = true, wrist = true, wrists = true,
+	}
+	local GUN_WORDS = {
+		gun = true, guns = true, weapon = true, weapons = true,
+		rifle = true, rifles = true, pistol = true, smg = true,
+		shotgun = true, shotguns = true, sniper = true, launcher = true,
+		receiver = true, barrel = true, bolt = true, slide = true, trigger = true,
+		grip = true, foregrip = true, handguard = true, handgrip = true, thumbgrip = true,
+		stock = true, mag = true, magazine = true, sight = true, scope = true, optic = true,
+		suppressor = true, silencer = true, flashhider = true, muzzlebrake = true,
+		rail = true, chamber = true, ak47 = true, ak74 = true, m16 = true, m4 = true,
+	}
 	local PROTECTED_WORDS = { "muzzle", "flash", "smoke", "particle", "beam", "bullet", "light" }
 	local function nameMatches(part, words)
+		-- substring matcher kept for the protective list only: over-matching
+		-- there just skips chamming flash/muzzle helpers, which is safe
 		local obj, depth = part, 0
 		while obj and depth < 5 do
 			local name = ""
@@ -2287,7 +2353,41 @@ do
 		end
 		return false
 	end
-	function OVX.isHandViewPart(part) return nameMatches(part, HAND_WORDS) end
+	local function splitTokens(name)
+		local text = tostring(name or "")
+		text = text:gsub("([%l%d])([%u])", "%1 %2")
+		text = string.lower(text)
+		local tokens = {}
+		for token in string.gmatch(text, "[%w]+") do
+			tokens[#tokens + 1] = token
+		end
+		return tokens
+	end
+	local function tokensContain(tokens, set)
+		for _, token in ipairs(tokens) do
+			if set[token] then return true end
+		end
+		return false
+	end
+	-- Gun tokens win at the same level ("Handguard" is a gun part, not a hand),
+	-- then the closest ancestor decides; nothing matched anywhere means gun,
+	-- which matches the previous default for non-hand view parts.
+	local function viewPartKind(part)
+		local obj, depth = part, 0
+		while obj and depth < 4 do
+			local name = ""
+			pcall(function() name = obj.Name end)
+			local tokens = splitTokens(name)
+			if tokensContain(tokens, GUN_WORDS) then return "gun" end
+			if tokensContain(tokens, HAND_WORDS) then return "hand" end
+			obj = obj.Parent
+			depth = depth + 1
+		end
+		return "gun"
+	end
+	function OVX.viewPartKind(part) return viewPartKind(part) end
+	function OVX.isHandViewPart(part) return viewPartKind(part) == "hand" end
+	function OVX.isGunViewPart(part) return viewPartKind(part) ~= "hand" end
 	function OVX.isProtectedViewPart(part) return nameMatches(part, PROTECTED_WORDS) end
 
 	local function collectViewParts(root, out, depth, maxDepth)
@@ -5047,11 +5147,12 @@ do
 end
 
 -- ================================================================
--- // MISC — SPEED / SPIDER / FREECAM  (ported from vape v4)
--- //   Logic copied 1:1 from vape v4 and adapted only where vape used
--- //   its own libraries: entitylib -> direct character access, vape
--- //   options -> library flags. Speed module = Velocity method with
--- //   MoveDirection/Direct move modes + Custom Properties friction.
+-- // MISC — SPEED / SPIDER / FREECAM
+-- //   Spider/Freecam logic is adapted from vape v4 (entitylib -> direct
+-- //   character access, vape options -> library flags). Speed is a plain
+-- //   additive WalkSpeed bonus, not a velocity override: it rides on top
+-- //   of whatever WalkSpeed the humanoid has (game, other mods) instead of
+-- //   fighting the physics solver.
 -- //   Spider = Velocity/Impulse/CFrame/Part modes. Freecam = Classic
 -- //   (camera-controller hook) + Roblox (FreeCamera module) modes.
 -- ================================================================
@@ -5067,52 +5168,13 @@ do
 		return false, char, hum, root
 	end
 
-	local function calculateMoveVector(vec)
-		local c, s
-		local camera = Workspace.CurrentCamera
-		local _, _, _, R00, R01, R02, _, _, R12, _, _, R22 = camera.CFrame:GetComponents()
-		if R12 < 1 and R12 > -1 then
-			c = R22
-			s = R02
-		else
-			c = R00
-			s = -R01 * math.sign(R12)
-		end
-		vec = Vector3.new((c * vec.X + s * vec.Z), 0, (c * vec.Z - s * vec.X)) / math.sqrt(c * c + s * s)
-		return vec.Unit == vec.Unit and vec.Unit or Vector3.zero
-	end
-
-	-- vape: frictionTable / updateVelocity (Custom Properties) (1:1)
-	local frictionTable, oldfrict = {}, {}
-	local function getTableSize(t)
-		local n = 0
-		for _ in pairs(t) do n += 1 end
-		return n
-	end
-	local function updateVelocity()
-		local alive, char = getChar()
-		if getTableSize(frictionTable) > 0 then
-			if alive then
-				for _, part in ipairs(char:GetChildren()) do
-					if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" and not oldfrict[part] then
-						oldfrict[part] = part.CustomPhysicalProperties or "none"
-						part.CustomPhysicalProperties = PhysicalProperties.new(0.0001, 0.2, 0.5, 1, 1)
-					end
-				end
-			end
-		else
-			for part, data in pairs(oldfrict) do
-				pcall(function() part.CustomPhysicalProperties = data ~= "none" and data or nil end)
-			end
-			table.clear(oldfrict)
-		end
-	end
-
-	-- vape: SpeedMethods (1:1; v4's method list only exposes Velocity)
-	local function speedVelocity(value, moveDirection)
-		local _, _, _, root = getChar()
-		root.AssemblyLinearVelocity = (moveDirection * value) + v3new(0, root.AssemblyLinearVelocity.Y, 0)
-	end
+	-- Speed notes:
+	--   The old vape velocity method owned the whole velocity vector (moveDirection
+	--   * value) and needed a friction table to feel walkable. This build instead
+	--   adds a small flat WalkSpeed bonus on top of the humanoid's current speed:
+	--   it never fights the game's own velocity changes and can't compound.
+	--   WalkSpeed is re-applied at 4 Hz in case the game writes it back, and the
+	--   originals are restored on toggle-off.
 
 	-- shared params
 	local rayCheck = RaycastParams.new()
@@ -5184,43 +5246,38 @@ do
 		end
 	end
 
-	-- ——— SPEED (vape 1:1: Velocity + MoveDirection/Direct + Custom Properties) ———
+	-- ——— SPEED (additive WalkSpeed bonus, 1–6 studs) ———
 	local speedConn = nil
-	local w, s, a, d = 0, 0, 0, 0
-	bind(UIS.InputBegan:Connect(function(input)
-		if not UIS:GetFocusedTextBox() then
-			local k = input.KeyCode
-			if k == Enum.KeyCode.W then w = -1
-			elseif k == Enum.KeyCode.S then s = 1
-			elseif k == Enum.KeyCode.A then a = -1
-			elseif k == Enum.KeyCode.D then d = 1 end
-		end
-	end))
-	bind(UIS.InputEnded:Connect(function(input)
-		local k = input.KeyCode
-		if k == Enum.KeyCode.W then w = 0
-		elseif k == Enum.KeyCode.S then s = 0
-		elseif k == Enum.KeyCode.A then a = 0
-		elseif k == Enum.KeyCode.D then d = 0 end
-	end))
+	local speedBase = setmetatable({}, { __mode = "k" })
+	local speedLastApply = 0
 
 	function setSpeed(on)
 		if speedConn then pcall(function() speedConn:Disconnect() end); speedConn = nil end
-		frictionTable.Speed = on and flags["spd_custom"] or nil
-		updateVelocity()
 		if on then
-			w = UIS:IsKeyDown(Enum.KeyCode.W) and -1 or 0
-			s = UIS:IsKeyDown(Enum.KeyCode.S) and 1 or 0
-			a = UIS:IsKeyDown(Enum.KeyCode.A) and -1 or 0
-			d = UIS:IsKeyDown(Enum.KeyCode.D) and 1 or 0
-			speedConn = RunService.PreSimulation:Connect(function(dt)
-				local alive, char, hum = getChar()
-				if alive then
-					if hum:GetState() == Enum.HumanoidStateType.Climbing then return end
-					local movevec = flags["spd_movemode"] == "Direct" and calculateMoveVector(v3new(a + d, 0, w + s)) or hum.MoveDirection
-					speedVelocity(flags["spd_value"] or 50, movevec)
+			speedLastApply = 0
+			speedConn = RunService.Heartbeat:Connect(function()
+				-- 4 Hz is plenty; the humanoid is only read/written a few times a second
+				local now = os.clock()
+				if now - speedLastApply < 0.25 then return end
+				speedLastApply = now
+				local alive, _, hum = getChar()
+				if not alive then return end
+				local extra = math.clamp(tonumber(flags["spd_value"]) or 6, 1, 6)
+				local base = speedBase[hum]
+				if base == nil then
+					base = hum.WalkSpeed
+					if base > 100 or base <= 0 then base = 16 end
+					speedBase[hum] = base
+				end
+				if hum.WalkSpeed ~= base + extra then
+					pcall(function() hum.WalkSpeed = base + extra end)
 				end
 			end)
+		else
+			for hum, base in pairs(speedBase) do
+				pcall(function() hum.WalkSpeed = base end)
+			end
+			table.clear(speedBase)
 		end
 	end
 
@@ -5699,17 +5756,19 @@ do
 		end
 	end
 
-	local hudAt, staffAt = 0, 0
-	local sticky
-	bind(RunService.Heartbeat:Connect(function()
-		local now = os.clock()
-		local hudInterval = 1 / math.clamp(tonumber(flags["ui_hud_hz"]) or 4, 1, 12)
-		local tiOn = flags["hud_targetinfo"] ~= false
-		local invOn = flags["invwin_enabled"] == true
-		tiRoot.Visible = tiOn
-		invRoot.Visible = invOn
-		staffRoot.Visible = flags["staffwin_enabled"] == true
-		if not (tiOn or invOn) and flags["staffwin_enabled"] ~= true then return end
+		local hudAt, staffAt = 0, 0
+		local lastTiVis, lastInvVis, lastStaffVis = nil, nil, nil
+		local sticky
+		bind(RunService.Heartbeat:Connect(function()
+			local now = os.clock()
+			local hudInterval = 1 / math.clamp(tonumber(flags["ui_hud_hz"]) or 4, 1, 12)
+			local tiOn = flags["hud_targetinfo"] ~= false
+			local invOn = flags["invwin_enabled"] == true
+			local staffOn = flags["staffwin_enabled"] == true
+			if lastTiVis ~= tiOn then tiRoot.Visible = tiOn; lastTiVis = tiOn end
+			if lastInvVis ~= invOn then invRoot.Visible = invOn; lastInvVis = invOn end
+			if lastStaffVis ~= staffOn then staffRoot.Visible = staffOn; lastStaffVis = staffOn end
+			if not (tiOn or invOn) and not staffOn then return end
 
 		-- target info + inventory at 4 Hz
 		if (tiOn or invOn) and now - hudAt >= hudInterval then
@@ -6095,7 +6154,7 @@ end
 -- ================================================================
 -- // UI
 -- ================================================================
-local window = library:window({ name = os.date("Vault | %b %d %Y") })
+local window = library:window({ name = "OV-X | FREE" })
 
 -- preview re-parent hook (bound to every preview-relevant toggle/colorpicker)
 local esp
@@ -6115,14 +6174,20 @@ local combatTab = window:tab({ name = "Combat" })
 do
 	local column = combatTab:column()
 	local sa = column:section({ name = "Silent Aim" })
+	local ragebotMainToggle = nil
+	local function setRageToggleVisual(toggle, value)
+		if not toggle then return end
+		local desired = value == true
+		toggle.state = desired
+		if toggle.flag then flags[toggle.flag] = desired end
+		pcall(toggle.Update, toggle)
+	end
 	local ragebotQuickToggle = sa:toggle({ name = "Ragebot (ON / OFF)", flag = "rb_enabled_quick", default = false, tooltip = "Turn Ragebot on from the first Combat page; all Silent Aim toggles are locked ON while active", callback = function(v)
 		if OVX.ragebotApply then pcall(OVX.ragebotApply, v) end
 	end })
 	OVX.ragebotQuickSync = function(value)
-		if not ragebotQuickToggle then return end
-		flags["rb_enabled_quick"] = value == true
-		ragebotQuickToggle.state = value == true
-		pcall(ragebotQuickToggle.Update, ragebotQuickToggle)
+		setRageToggleVisual(ragebotQuickToggle, value)
+		setRageToggleVisual(ragebotMainToggle, value)
 	end
 	sa:toggle({ name = "Enabled", flag = "sa_enabled", default = true })
 		:keybind({ name = "Silent Aim", flag = "sa_bind", callback = function(v)
@@ -6187,7 +6252,7 @@ do
 
 	local column3 = combatTab:column()
 	local rage = column3:section({ name = "Ragebot" })
-	rage:toggle({ name = "Ragebot", flag = "rb_enabled", tooltip = "Locks all Silent Aim toggles ON, forces Head, and uses INF acquisition", callback = function(v)
+	ragebotMainToggle = rage:toggle({ name = "Ragebot", flag = "rb_enabled", tooltip = "Locks all Silent Aim toggles ON, forces Head, and uses INF acquisition", callback = function(v)
 		if OVX.ragebotApply then pcall(OVX.ragebotApply, v) end
 	end })
 	rage:slider({ name = "Hit Distance", min = 0, max = 5000, default = 0, interval = 10, suffix = "m", flag = "rb_max_dist", tooltip = "0 = unlimited; otherwise the maximum Ragebot acquisition distance" })
@@ -6261,7 +6326,7 @@ do
 
 	section:toggle({ name = "Weapon", flag = "Weapon", callback = update_elements })
 		:colorpicker({ name = "Weapon Color", flag = "Weapon_Color", color = c3(255,220,80), callback = update_elements })
-	section:toggle({ name = "2D ESP Preview", flag = "esp_preview_2d", default = true, callback = update_elements, tooltip = "Live Drawing panel beside the Vault window" })
+	section:toggle({ name = "2D ESP Preview", flag = "esp_preview_2d", default = true, callback = update_elements, tooltip = "Live Drawing panel beside the OV-X window" })
 	section:toggle({ name = "3D Preview On Self", flag = "esp_self_preview_3d", default = true, callback = update_elements, tooltip = "Live box, highlight and health/name billboard attached to your own character" })
 	section:slider({ name = "3D Preview Rate", min = 2, max = 20, default = 10, interval = 1, suffix = " Hz", flag = "esp_self_preview_hz" })
 	section:button({ name = "Refresh ESP Previews", callback = update_elements })
@@ -6434,14 +6499,8 @@ do
 			local fn = library.config_flags and library.config_flags["spd_enabled"]
 			if fn then fn(v) end
 		end })
-	spSec:dropdown({ name = "Mode", flag = "spd_mode", items = { "Velocity" }, default = "Velocity", callback = function()
-		if flags["spd_enabled"] then setSpeed(false); setSpeed(true) end
-	end })
-	spSec:dropdown({ name = "Move Mode", flag = "spd_movemode", items = { "MoveDirection", "Direct" }, default = "MoveDirection" })
-	spSec:slider({ name = "Speed", min = 1, max = 150, default = 50, interval = 1, suffix = " studs", flag = "spd_value" })
-	spSec:toggle({ name = "Custom Properties", flag = "spd_custom", default = true, callback = function()
-		if flags["spd_enabled"] then setSpeed(false); setSpeed(true) end
-	end })
+	spSec:slider({ name = "Extra Speed", min = 1, max = 6, default = 6, interval = 1, suffix = " studs", flag = "spd_value", tooltip = "Adds this much to your WalkSpeed on top of your normal speed" })
+	spSec:label("WalkSpeed bonus, not a velocity override.")
 
 	local spSec2 = column:section({ name = "Spider" })
 	spSec2:toggle({ name = "Enabled", flag = "sp_enabled", tooltip = "Lets you climb up obstacles.", callback = function(v)
@@ -6661,7 +6720,7 @@ do
 	local col2 = settingsTab:column()
 	local interface = col2:section({ name = "Interface" })
 	interface:toggle({ name = "Always On: Fix Color Picker", flag = "ui_modal_guard", default = true, tooltip = "Always-on guard closes stuck color pickers, dropdowns, textboxes and keybind mode menus on right-click / Escape" })
-	interface:toggle({ name = "Free Mouse", flag = "ui_free_mouse", default = true, tooltip = "Releases the cursor while the Vault menu is open so controls can be clicked", callback = function(v)
+	interface:toggle({ name = "Free Mouse", flag = "ui_free_mouse", default = true, tooltip = "Releases the cursor while the OV-X menu is open so controls can be clicked", callback = function(v)
 		if window._compatSetMenuVisible then
 			pcall(window._compatSetMenuVisible, library.menu_visible == true, v ~= false)
 		end
@@ -6704,7 +6763,7 @@ do
 	essentials:button({ name = "Close Stuck Menus", callback = function()
 		if window._compatCloseTransients then pcall(window._compatCloseTransients, window, true) end
 	end })
-	essentials:button({ name = "Unload Vault", callback = function()
+	essentials:button({ name = "Unload OV-X", callback = function()
 		local handle = getgenv().Vault
 		if handle and handle.unload then pcall(handle.unload) end
 	end })
@@ -6848,7 +6907,13 @@ end)
 		end
 		-- ── vehicle boost (attributes are read by VehiclesClient per frame) ──
 		local vehOrig = setmetatable({}, { __mode = "k" })
+		local vehLastAt = 0
 		local function vehicleBoost()
+			-- throttle: this used to rewrite three attributes every frame; 2 Hz is
+			-- more than enough for values the game reads on its own cadence
+			local now = os.clock()
+			if now - vehLastAt < 0.5 then return end
+			vehLastAt = now
 			local hum = lp.Character and lp.Character:FindFirstChildOfClass("Humanoid")
 			local seat = hum and hum.SeatPart
 			local model = seat and seat:FindFirstAncestorOfClass("Model")
@@ -6916,6 +6981,8 @@ end)
 		function OVX.exWake() if exFire("RespawnRemotes", "WakeUp") then OVX.ex.wake = OVX.ex.wake + 1 end end
 		function OVX.exAmmo() if exFire("FirearmsRemotes", "SwitchAmmo") then OVX.ex.ammo = OVX.ex.ammo + 1 end end
 		bind(RunService.Heartbeat:Connect(function()
+			if not (flags["ex_heal"] or flags["ex_barrel"] or flags["ex_reload"]
+				or flags["ex_vehicle"] or flags["ex_metal"] or flags["ex_para"] or flags["ex_shield"]) then return end
 			if flags["ex_heal"] then autoHeal() end
 			if flags["ex_barrel"] then smashBarrels() end
 			if flags["ex_reload"] then autoReload() end
