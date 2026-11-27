@@ -157,6 +157,221 @@ do
 			.. src:sub(j + 1)
 	end
 
+	-- Compatibility patches for noname.hack: Always On keybinds, modal cleanup,
+	-- and a color picker that works even when Imgur image data is unavailable.
+	local function patchOnce(oldText, newText)
+		local i, j = src:find(oldText, 1, true)
+		if i then src = src:sub(1, i - 1) .. newText .. src:sub(j + 1) end
+	end
+	local function patchAll(oldText, newText)
+		local at = 1
+		while true do
+			local i, j = src:find(oldText, at, true)
+			if not i then break end
+			src = src:sub(1, i - 1) .. newText .. src:sub(j + 1)
+			at = i + #newText
+		end
+	end
+
+	patchOnce([==[    function utility:Connect(connection, func)
+]==], [==[    function utility:OVXSetHue(parent, hue)
+        if not parent or type(parent._ovxSvStrips) ~= "table" then return end
+        for _, strip in ipairs(parent._ovxSvStrips) do
+            strip.Color = c3hsv(hue, strip._s, strip._v)
+        end
+    end
+
+    function utility:OVXMakeSVGradient(parent, hue)
+        if not parent then return {} end
+        local strips = {}
+        for row = 0, 9 do
+            for col = 0, 9 do
+                local sat, val = col / 9, 1 - row / 9
+                local strip = utility:Draw("Square", v2new(col * 10, row * 10), {
+                    Size = v2new(10, 10), Color = c3hsv(hue, sat, val),
+                    ZIndex = 10^4 - 1, Parent = parent,
+                })
+                strip._s, strip._v = sat, val
+                strips[#strips + 1] = strip
+            end
+        end
+        parent._ovxSvStrips = strips
+        return strips
+    end
+
+    function utility:OVXMakeBarGradient(parent, trans)
+        if not parent then return {} end
+        local strips = {}
+        for i = 0, 19 do
+            local t = i / 19
+            local color = trans and c3rgb(math.floor(255 * (1 - t)), math.floor(255 * (1 - t)), math.floor(255 * (1 - t))) or c3hsv(t, 1, 1)
+            local strip = utility:Draw("Square", v2new(1, 1 + i * 5), {
+                Size = v2new(5, 5), Color = color, ZIndex = 10^4 - 1, Parent = parent,
+            })
+            strips[#strips + 1] = strip
+        end
+        parent._ovxBarStrips = strips
+        return strips
+    end
+
+    function utility:Connect(connection, func)
+]==])
+
+	patchOnce([==[    function utility:Image(object, link, name)
+        local data = library.preloaded_images[link]
+
+        if not data then
+            data = game:HttpGet(link)
+        end
+
+        if library.preloaded_images[link] == nil then
+            library.preloaded_images[link] = data
+        end
+        object.Data = data
+    end
+]==], [==[    function utility:Image(object, link, name)
+        if not object then return end
+        local data = library.preloaded_images[link]
+        if not data then
+            local ok, response = pcall(function() return game:HttpGet(link) end)
+            if ok and type(response) == "string" then
+                data = response
+                library.preloaded_images[link] = data
+            end
+        end
+        local png = string.char(137) .. "PNG" .. string.char(13) .. string.char(10) .. string.char(26) .. string.char(10)
+        local jpeg = string.char(255) .. string.char(216)
+        local valid = type(data) == "string" and #data > 16 and (
+            data:sub(1, 8) == png or data:sub(1, 2) == jpeg or
+            data:sub(1, 4) == "GIF8" or data:sub(1, 4) == "<svg" or
+            data:sub(1, 5) == "<?xml" or data:sub(1, 5) == "data:"
+        )
+        if valid then
+            local ok = pcall(function() object.Data = data end)
+            if ok then object.Visible = true; return end
+        end
+        object.Visible = false
+    end
+]==])
+
+	patchOnce([==[    function window.HideUselessDumbassFuckingShitStopPastingMyCodePleaseYouAreSkidAndImGayILikeBigBlackManOkNoProblemThisIsASexcretFuncteiotieitns4epoivi2n45obvi6j45bv74gvho4hgv487(self)
+        if self.shit.dropdown then
+            self.shit.dropdown:Close()
+        elseif self.shit.textbox then
+            self.shit.textbox:Stop()
+        elseif self.shit.keybind then
+            self.shit.keybind:Close()
+        elseif self.shit.colorpicker then
+            self.shit.colorpicker:Close()
+        end
+    end
+]==], [==[    function window.HideUselessDumbassFuckingShitStopPastingMyCodePleaseYouAreSkidAndImGayILikeBigBlackManOkNoProblemThisIsASexcretFuncteiotieitns4epoivi2n45obvi6j45bv74gvho4hgv487(self)
+        if self.shit.dropdown and self.shit.dropdown.Close then pcall(self.shit.dropdown.Close, self.shit.dropdown) end
+        if self.shit.textbox and self.shit.textbox.Stop then pcall(self.shit.textbox.Stop, self.shit.textbox) end
+        if self.shit.keybind and self.shit.keybind.Close then pcall(self.shit.keybind.Close, self.shit.keybind) end
+        if self.shit.colorpicker and self.shit.colorpicker.Close then pcall(self.shit.colorpicker.Close, self.shit.colorpicker) end
+    end
+]==])
+
+	patchOnce('                    keybind_value.Text = utility.short_keybind_names[self.value] or self.value:upper()',
+		[==[                    if self.mode == "always" then
+                        keybind_value.Text = "ON"
+                    else
+                        keybind_value.Text = utility.short_keybind_names[self.value] or self.value:upper()
+                    end]==])
+	patchOnce([==[                function keybind.Set(self, value)
+                    self.value = value[1]
+                    self.mode = value[2]
+
+                    self:Update()
+                end
+]==], [==[                function keybind.Set(self, value)
+                    self.value = value[1] or "unset"
+                    self.mode = value[2] or "toggle"
+                    if self.mode == "always" and not table.find(window.kbds, self.pointer) then
+                        table.insert(window.kbds, self.pointer)
+                        if window.kblist then window.kblist:Update() end
+                    end
+                    self:Update()
+                end
+]==])
+	patchOnce([==[                function keybind.AddToTable(self, input_name)
+                    if keybind.value == input_name then
+]==], [==[                function keybind.AddToTable(self, input_name)
+                    if keybind.mode == "always" then
+                        if not table.find(window.kbds, keybind.pointer) then
+                            table.insert(window.kbds, keybind.pointer)
+                            if window.kblist then window.kblist:Update() end
+                        end
+                        return
+                    end
+                    if keybind.value == input_name then
+]==])
+	patchOnce('                        Size = v2new(48, 5 + 26),', '                        Size = v2new(62, 5 + 40),')
+	patchOnce('                    for i, v in pairs({"Toggle", "Hold"}) do', '                    for i, v in ipairs({"Toggle", "Hold", "Always On"}) do')
+	patchOnce([==[                                        if offset >= 22 then
+                                            keybind.mode = "hold"
+                                        else
+                                            keybind.mode = "toggle"
+                                        end
+
+                                        for i, v in pairs({keybind.minst[3], keybind.minst[4]}) do
+                                            v.Color = keybind.mode == v.Text:lower() and window.theme.accent or c3rgb(255, 255, 255)
+                                        end
+]==], [==[                                        local modeIndex = offset >= 30 and 3 or (offset >= 16 and 2 or 1)
+                                        keybind.mode = ({"toggle", "hold", "always"})[modeIndex]
+                                        for i = 3, 5 do
+                                            local v = keybind.minst[i]
+                                            if v then v.Color = (i - 2 == modeIndex) and window.theme.accent or c3rgb(255, 255, 255) end
+                                        end
+                                        if keybind.mode == "always" and not table.find(window.kbds, keybind.pointer) then
+                                            table.insert(window.kbds, keybind.pointer)
+                                            if window.kblist then window.kblist:Update() end
+                                        end
+]==])
+
+	patchOnce([==[                    utility:Image(cpdropframe_color_image, "https://i.imgur.com/wpDRqVH.png")
+                    utility:Image(cpdropframe_hue_image, "https://i.imgur.com/iEOsHFv.png")
+                    utility:Image(cpdropframe_trans_image, "https://i.imgur.com/GeMU2Ke.png")
+]==], [==[                    utility:Image(cpdropframe_color_image, "https://i.imgur.com/wpDRqVH.png")
+                    utility:Image(cpdropframe_hue_image, "https://i.imgur.com/iEOsHFv.png")
+                    utility:Image(cpdropframe_trans_image, "https://i.imgur.com/GeMU2Ke.png")
+                    cpdropframe_color_image.Visible = false
+                    cpdropframe_hue_image.Visible = false
+                    cpdropframe_trans_image.Visible = false
+                    utility:OVXMakeSVGradient(cpdropframe_color, self.dvalues[1])
+                    utility:OVXMakeBarGradient(cpdropframe_hue, false)
+                    utility:OVXMakeBarGradient(cpdropframe_trans, true)
+]==])
+	patchOnce([==[                    if not self.trans then
+                        cpdropframe_trans.Visible = false
+                        cpdropframe_trans_image.Visible = false
+                        cpdropframe_trans_picker.Visible = false
+                        cpdropframe_trans_picker_outline.Visible = false
+                    end
+]==], [==[                    if not self.trans then
+                        cpdropframe_trans.Visible = false
+                        cpdropframe_trans_image.Visible = false
+                        cpdropframe_trans_picker.Visible = false
+                        cpdropframe_trans_picker_outline.Visible = false
+                        for _, strip in ipairs(cpdropframe_trans._ovxBarStrips or {}) do strip.Visible = false end
+                    end
+]==])
+	patchOnce([==[                    self.instances = {cpdropframe, cpdropframe_outline, cpdropframe_accent, cpdropframe_color, cpdropframe_color_outline, cpdropframe_color_image,
+                        cpdropframe_color_cursor, cpdropframe_color_cursor_outline, cpdropframe_hue, cpdropframe_hue_image, cpdropframe_hue_picker, cpdropframe_hue_picker_outline,
+                        cpdropframe_trans, cpdropframe_trans_image, cpdropframe_trans_picker, cpdropframe_trans_picker_outline
+                    }
+]==], [==[                    self.instances = {cpdropframe, cpdropframe_outline, cpdropframe_accent, cpdropframe_color, cpdropframe_color_outline, cpdropframe_color_image,
+                        cpdropframe_color_cursor, cpdropframe_color_cursor_outline, cpdropframe_hue, cpdropframe_hue_image, cpdropframe_hue_picker, cpdropframe_hue_picker_outline,
+                        cpdropframe_trans, cpdropframe_trans_image, cpdropframe_trans_picker, cpdropframe_trans_picker_outline
+                    }
+                    for _, stripList in ipairs({cpdropframe_color._ovxSvStrips or {}, cpdropframe_hue._ovxBarStrips or {}, cpdropframe_trans._ovxBarStrips or {}}) do
+                        for _, strip in ipairs(stripList) do self.instances[#self.instances + 1] = strip end
+                    end
+]==])
+	patchAll('colorpicker.instances[4].Color = c3hsv(py, 1, 1)',
+		'colorpicker.instances[4].Color = c3hsv(py, 1, 1); utility:OVXSetHue(colorpicker.instances[4], py)')
+
 	local chunk = assert(loadstring(src), "[OVX] noname.hack UI failed to compile")
 	local a, b = chunk()
 	library, utility = a, b
@@ -280,6 +495,22 @@ setDefaultFlag("ds_rx", 90)
 setDefaultFlag("ds_ry", 0)
 setDefaultFlag("ds_rz", 0)
 setDefaultFlag("tb_max_dist", 0)
+setDefaultFlag("rb_enabled", false)
+setDefaultFlag("rb_max_dist", 0)
+setDefaultFlag("esp_preview_2d", true)
+setDefaultFlag("esp_self_preview_3d", true)
+setDefaultFlag("esp_self_preview_hz", 10)
+setDefaultFlag("cfg_name", "Default")
+setDefaultFlag("cfg_selected", "Default")
+setDefaultFlag("cfg_auto_load", false)
+setDefaultFlag("ui_modal_guard", true)
+setDefaultFlag("ui_menu_key", { active = false, mode = "toggle", key = "Insert" })
+setDefaultFlag("ui_jump_combat", "Ragebot")
+setDefaultFlag("ui_jump_visuals", "Gun Chams")
+setDefaultFlag("ui_jump_settings", "Configs")
+setDefaultFlag("ui_accent", Color3.fromRGB(155, 105, 230))
+setDefaultFlag("ui_background", Color3.fromRGB(20, 20, 27))
+setDefaultFlag("ui_outline", Color3.fromRGB(58, 58, 72))
 local compatTheme = {
 	accent   = Color3.fromRGB(155, 105, 230),
 	dcont    = Color3.fromRGB(12, 12, 17),
@@ -375,7 +606,12 @@ local function registerFlagSetter(flag, setter)
 	if flag then configSetters[flag] = setter end
 end
 
-local function setCompatFlag(flag, value)
+-- Reassigned by the Ragebot module. It keeps locked Silent Aim controls from
+-- being switched off through a toggle, keybind, config load or console setter.
+local enforceRagebotFlag = function(_, value) return value end
+
+local function setCompatFlag(flag, value, force)
+	if not force then value = enforceRagebotFlag(flag, value) end
 	local setter = configSetters[flag]
 	if setter then pcall(setter, value) else library.flags[flag] = value end
 end
@@ -390,11 +626,18 @@ local function keyName(value)
 	return "unset"
 end
 
+local function normalizeKeybindMode(value)
+	local mode = string.lower(tostring(value or "toggle"))
+	mode = mode:gsub("[%s_%-]+", "")
+	if mode == "always" or mode == "alwayson" or mode == "on" then return "always" end
+	if mode == "hold" then return "hold" end
+	return "toggle"
+end
+
 local function keybindInfo(info)
 	info = info or {}
 	local out = copyTable(info)
-	local mode = string.lower(tostring(info.mode or "toggle"))
-	if mode ~= "hold" then mode = "toggle" end
+	local mode = normalizeKeybindMode(info.mode)
 	out.def = keyName(info.def or info.key or info.default)
 	out.mode = mode
 	out.flag = info.flag
@@ -459,59 +702,90 @@ local function refreshSection(section)
 	if not tab.on and section.Hide then pcall(section.Hide, section) end
 end
 
-local function attachKeybind(keybind, info, section)
-	info = info or {}
-	local flag = info.flag
-	local callback = info.callback
-	local pointer = nextPointer(flag or "keybind")
-	local mode = string.lower(tostring(info.mode or "toggle"))
-	if mode ~= "hold" then mode = "toggle" end
-	local boundKey = keyName(info.def or info.key or info.default)
+	local function attachKeybind(keybind, info, section)
+		info = info or {}
+		local flag = info.flag
+		local callback = info.callback
+		local pointer = nextPointer(flag or "keybind")
+		local mode = normalizeKeybindMode(info.mode)
+		local boundKey = keyName(info.def or info.key or info.default)
 
-	rebindPointer(keybind, pointer)
-	keybind.name = info.name or keybind.name
-	if section and section.name then keybind.sname = section.name end
-	if keybind.Set then pcall(keybind.Set, keybind, { boundKey, mode }) end
-	if flag then library.flags[flag] = { active = false, mode = mode, key = boundKey } end
+		rebindPointer(keybind, pointer)
+		keybind.name = info.name or keybind.name
+		if section and section.name then keybind.sname = section.name end
+		if keybind.Set then pcall(keybind.Set, keybind, { boundKey, mode }) end
+		pcall(function() keybind.mode = mode end)
+		if flag then library.flags[flag] = { active = false, mode = mode, key = boundKey } end
 
-	local active = false
-	local function setActive(state)
-		state = state and true or false
-		if active == state then return end
-		active = state
-		if flag and type(library.flags[flag]) == "table" then library.flags[flag].active = state end
-		if callback then pcall(callback, state) end
-	end
-
-	function keybind:set(value)
-		if type(value) == "table" and value.active ~= nil then value = value.active end
-		local desired = value == true or value == 1 or value == "true"
-		local index = contains(nativeWindow.kbds, pointer)
-		if desired and not index then
-			table.insert(nativeWindow.kbds, pointer)
-		elseif not desired and index then
-			table.remove(nativeWindow.kbds, index)
+		local active = false
+		local function setActive(state)
+			state = state and true or false
+			if active == state then return end
+			active = state
+			if flag and type(library.flags[flag]) == "table" then library.flags[flag].active = state end
+			if callback then pcall(callback, state) end
 		end
-		if nativeWindow.kblist then pcall(nativeWindow.kblist.Update, nativeWindow.kblist) end
-		setActive(desired)
-	end
 
-	function keybind:colorpicker(cpInfo)
-		return self
-	end
+		local function syncAlways(kbMode)
+			if kbMode ~= "always" then return false end
+			if not contains(nativeWindow.kbds, pointer) then
+				table.insert(nativeWindow.kbds, pointer)
+				if nativeWindow.kblist then pcall(nativeWindow.kblist.Update, nativeWindow.kblist) end
+			end
+			setActive(true)
+			return true
+		end
 
-	local heartbeat = game:GetService("RunService").Heartbeat
-	utility:Connect(heartbeat, function()
-		local isActive = contains(nativeWindow.kbds, pointer) ~= nil
-		if isActive ~= active then setActive(isActive) end
-	end)
+		function keybind:set(value)
+			local desired
+			if type(value) == "table" then
+				desired = value.active
+				if desired == nil then desired = value[1] == true or value[1] == 1 or value[1] == "true" end
+				local incomingMode = normalizeKeybindMode(value.mode or value[2] or mode)
+				local incomingKey = keyName(value.key or value[1] or boundKey)
+				if incomingMode ~= mode or incomingKey ~= boundKey then
+					mode, boundKey = incomingMode, incomingKey
+					if keybind.Set then pcall(keybind.Set, keybind, { boundKey, mode }) end
+				end
+				pcall(function() keybind.mode = mode end)
+				if flag and type(library.flags[flag]) == "table" then
+					library.flags[flag].mode = mode
+					library.flags[flag].key = boundKey
+				end
+			else
+				desired = value == true or value == 1 or value == "true"
+			end
+			if mode == "always" then desired = true end
+			local index = contains(nativeWindow.kbds, pointer)
+			if desired and not index then
+				table.insert(nativeWindow.kbds, pointer)
+			elseif not desired and index then
+				table.remove(nativeWindow.kbds, index)
+			end
+			if nativeWindow.kblist then pcall(nativeWindow.kblist.Update, nativeWindow.kblist) end
+			setActive(desired == true)
+		end
 
-	if flag then
-		registerFlagSetter(flag, function(value) keybind:set(value) end)
+		function keybind:colorpicker(cpInfo)
+			return self
+		end
+
+		local heartbeat = game:GetService("RunService").Heartbeat
+		utility:Connect(heartbeat, function()
+			local kbMode = normalizeKeybindMode(keybind.mode or mode)
+			if kbMode ~= mode then
+				mode = kbMode
+				if flag and type(library.flags[flag]) == "table" then library.flags[flag].mode = mode end
+			end
+			if syncAlways(kbMode) then return end
+			local isActive = contains(nativeWindow.kbds, pointer) ~= nil
+			if isActive ~= active then setActive(isActive) end
+		end)
+
+		if flag then registerFlagSetter(flag, function(value) keybind:set(value) end) end
+		refreshSection(section)
+		return keybind
 	end
-	refreshSection(section)
-	return keybind
-end
 
 local function attachColorpicker(colorpicker, info, section)
 	info = info or {}
@@ -546,6 +820,12 @@ local function attachValue(object, info, section, kind)
 	info = info or {}
 	local flag = info.flag
 	rebindPointer(object, nextPointer(flag or kind or "value"))
+	local nativeSet = object.Set
+	if type(nativeSet) == "function" then
+		function object.Set(self, value)
+			return nativeSet(self, enforceRagebotFlag(flag, value))
+		end
+	end
 
 	function object:set(value)
 		return self:Set(value)
@@ -570,6 +850,12 @@ local function attachToggle(toggle, info, section)
 	info = info or {}
 	local flag = info.flag
 	rebindPointer(toggle, nextPointer(flag or "toggle"))
+	local nativeSet = toggle.Set
+	if type(nativeSet) == "function" then
+		function toggle.Set(self, value)
+			return nativeSet(self, enforceRagebotFlag(flag, value))
+		end
+	end
 
 	function toggle:set(value)
 		if type(value) ~= "boolean" then value = value == true or value == 1 or value == "true" end
@@ -715,23 +1001,25 @@ local function attachTab(tab)
 		local maxH = math.max(120, (frame and frame.Size and frame.Size.Y or 620) - 55 - 24)
 		local cols = self._compatColumns or { {}, {} }
 		self._compatColumns = cols
-		local maxScroll = math.max(0, math.max(#(cols[1] or {}), #(cols[2] or {})) - 1)
+		local longest = math.max(#(cols[1] or {}), #(cols[2] or {}))
+		local maxScroll = math.max(0, longest - 1)
 		self._compatScroll = math.clamp(tonumber(scroll) or self._compatScroll or 0, 0, maxScroll)
 		local visible = { {}, {} }
 		for sn = 1, 2 do
 			local list = cols[sn] or {}
-			local start = math.min(self._compatScroll + 1, #list)
-			if start < 1 then start = 1 end
-			local used = 0
-			for idx = start, #list do
-				local item = list[idx]
-				if item and item.section then
+			local count = #list
+			if count > 0 then
+				local start = (self._compatScroll % count) + 1
+				local used = 0
+				for offset = 0, count - 1 do
+					local idx = ((start - 1 + offset) % count) + 1
+					local item = list[idx]
+					if not item or not item.section then break end
 					local h = tonumber(item.h) or 40
-					if #visible[sn] == 0 or used + h <= maxH then
-						visible[sn][#visible[sn] + 1] = item.section
-						used = used + h
-						item.section.side = sn == 1 and "left" or "right"
-					end
+					if #visible[sn] > 0 and used + h > maxH then break end
+					visible[sn][#visible[sn] + 1] = item.section
+					used = used + h
+					item.section.side = sn == 1 and "left" or "right"
 				end
 			end
 		end
@@ -747,6 +1035,23 @@ local function attachTab(tab)
 				end
 			end
 		end
+	end
+
+	function tab:_compatFocusSection(name)
+		local cols = self._compatColumns or { {}, {} }
+		local longest = math.max(#(cols[1] or {}), #(cols[2] or {}))
+		local target
+		for sn = 1, 2 do
+			for idx, item in ipairs(cols[sn] or {}) do
+				if item.section and item.section.name == name then
+					target = math.min(target or idx, idx)
+				end
+			end
+		end
+		if not target then return false end
+		self._compatScroll = math.clamp(target - 1, 0, math.max(0, longest - 1))
+		self:_compatApplyScroll(self._compatScroll)
+		return true
 	end
 
 	local nativeShow = tab.Show
@@ -841,10 +1146,8 @@ local function rebalanceAllTabs()
 					work[#work + 1] = { i = index, h = sectionHeight(section), section = section }
 				end
 			end
-			table.sort(work, function(a, b)
-				if a.h == b.h then return a.i < b.i end
-				return a.h > b.h
-			end)
+			-- Keep authored order so the first page contains the primary
+			-- sections; balance only by accumulated height.
 			local columns, heights = { {}, {} }, { 0, 0 }
 			for _, item in ipairs(work) do
 				local sn = heights[1] <= heights[2] and 1 or 2
@@ -870,6 +1173,18 @@ local function rebalanceAllTabs()
 	if nativeWindow.sshit and nativeWindow.SelectTab then
 		pcall(nativeWindow.SelectTab, nativeWindow, nativeWindow.sshit.name)
 	end
+end
+
+function library:focus_section(tabName, sectionName)
+	if not nativeWindow then return false end
+	local target
+	for _, tab in ipairs(nativeWindow.tabs or {}) do
+		if tab.name == tabName then target = tab; break end
+	end
+	if not target then return false end
+	if nativeWindow.SelectTab then pcall(nativeWindow.SelectTab, nativeWindow, tabName) end
+	if target._compatFocusSection then return target:_compatFocusSection(sectionName) end
+	return true
 end
 
 local initialized = false
@@ -972,6 +1287,44 @@ function library:window(info)
 	nativeWindow:Connect({ con = "fade", callback = function(showing)
 		setMenuVisible(showing, flags["ui_free_mouse"] ~= false)
 	end })
+	function nativeWindow:_compatCloseTransients(includeKeybind)
+		local s = self.shit or {}
+		pcall(function() if s.dropdown and s.dropdown.Close then s.dropdown:Close() end end)
+		pcall(function() if s.textbox and s.textbox.Stop then s.textbox:Stop() end end)
+		pcall(function() if s.colorpicker and s.colorpicker.Close then s.colorpicker:Close() end end)
+		if includeKeybind ~= false then
+			pcall(function() if s.keybind and s.keybind.Close then s.keybind:Close() end end)
+		end
+	end
+	local function deferModal(fn)
+		if type(task) == "table" and type(task.defer) == "function" then
+			pcall(task.defer, fn)
+		elseif type(task) == "table" and type(task.delay) == "function" then
+			pcall(task.delay, 0, fn)
+		else
+			pcall(fn)
+		end
+	end
+	utility:Connect(uis.InputBegan, function(input)
+		if not frame.Visible or flags["ui_modal_guard"] == false then return end
+		if input.UserInputType == Enum.UserInputType.MouseButton2 then
+			deferModal(function()
+				local s = nativeWindow.shit or {}
+				pcall(function() if s.colorpicker and s.colorpicker.Close then s.colorpicker:Close() end end)
+				pcall(function() if s.dropdown and s.dropdown.Close then s.dropdown:Close() end end)
+				pcall(function() if s.textbox and s.textbox.Stop then s.textbox:Stop() end end)
+				pcall(function()
+					if s.keybind and s.keybind.minst and #s.keybind.minst > 0 then
+						local over = false
+						pcall(function() over = utility:MouseOverDrawing(s.keybind.minst[1]) end)
+						if not over and s.keybind.Close then s.keybind:Close() end
+					end
+				end)
+			end)
+		elseif input.KeyCode == Enum.KeyCode.Escape then
+			pcall(nativeWindow._compatCloseTransients, nativeWindow, true)
+		end
+	end)
 	captureMouseState()
 	utility:Connect(game:GetService("RunService").Heartbeat, function()
 		if not library.menu_visible or not frame.Visible then return end
@@ -1019,9 +1372,18 @@ function library:window(info)
 	-- noname.hack does not bind a menu key by itself. Keep Insert / RightShift
 	-- as show-hide shortcuts and register the connection with the library so
 	-- window:unload() disconnects it.
-	nativeWindow.menu_key = Enum.KeyCode.Insert
+	local function currentMenuKey()
+		local cfg = flags["ui_menu_key"]
+		local name = type(cfg) == "table" and cfg.key or nil
+		if type(name) ~= "string" or name == "" or name == "unset" then name = "Insert" end
+		local key
+		pcall(function() key = Enum.KeyCode[name] end)
+		return key or Enum.KeyCode.Insert
+	end
+	nativeWindow.menu_key = currentMenuKey()
+	nativeWindow._compatCurrentMenuKey = currentMenuKey
 	utility:Connect(uis.InputBegan, function(input)
-		if input.KeyCode == Enum.KeyCode.Insert or input.KeyCode == Enum.KeyCode.RightShift then
+		if input.KeyCode == Enum.KeyCode.RightShift or input.KeyCode == currentMenuKey() then
 			if nativeWindow.Fade then pcall(nativeWindow.Fade, nativeWindow) end
 		end
 	end)
@@ -1138,7 +1500,7 @@ function library:window(info)
 
 		local preview = {}
 		function preview.refresh_elements()
-			local shown = frame.Visible and true or false
+			local shown = frame.Visible and getFlagBool("esp_preview_2d", true) and true or false
 			local function setVisible(object, state)
 				object.Visible = shown and state
 			end
@@ -1182,6 +1544,14 @@ function library:window(info)
 		function preview.reposition()
 			bg.SetOffset(Vector2.new(frame.Size.X + 12, 22))
 			pcall(preview.refresh_elements)
+		end
+		function preview.set_enabled(state)
+			library.flags["esp_preview_2d"] = state == true
+			pcall(preview.refresh_elements)
+		end
+		function preview.destroy()
+			for _, object in ipairs(draws) do pcall(function() object:Remove() end) end
+			if library._compatPreview == preview then library._compatPreview = nil end
 		end
 
 		preview.refresh_elements()
@@ -1314,6 +1684,7 @@ local _connections = {}
 local function bind(conn) _connections[#_connections + 1] = conn; return conn end
 local espUnload = nil  -- assigned inside the ESP block, called by cleanup()
 
+
 -- ================================================================
 -- // HELD-ITEM RESOLVER (universal)
 -- //   1. an equipped Tool inside the character (standard tools/guns/melee)
@@ -1420,6 +1791,90 @@ local WORLD_SEC_COLOR = {
 -- //   OVX.arrowSpeed/-Gravity <- captured live from BowRemotes.Flight
 -- ================================================================
 local OVX = { saTarget = nil, saRedirectAt = nil, arrowSpeed = nil, arrowGravity = 18 }
+-- ================================================================
+-- // RAGEBOT STATE
+-- //   The master toggle is reversible. While it is on, every Silent Aim
+-- //   toggle is forced ON and cannot be switched off from a control,
+-- //   keybind, config load or console setter.
+-- ================================================================
+do
+	local ragebotRequired = {
+		sa_enabled = true,
+		sa_team_check = true,
+		sa_target_npc = true,
+		sa_show_fov = true,
+		sa_snapline = true,
+		sa_snapline_npc = true,
+		sa_cross = true,
+		sa_force_head = true,
+		sa_instant_hit = true,
+		sa_remote_jack = true,
+		sa_bone = "Head",
+		sa_bow_enabled = false,
+	}
+	OVX.ragebotLocked = ragebotRequired
+	OVX.ragebotRestore = nil
+
+	enforceRagebotFlag = function(flag, value)
+		if flags["rb_enabled"] ~= true then return value end
+		local required = ragebotRequired[flag]
+		if required == nil then return value end
+		local candidate = value
+		if type(required) == "boolean" then
+			candidate = value == true or value == 1 or value == "true" or value == "on"
+		end
+		if candidate ~= required then return required end
+		return candidate
+	end
+
+	function OVX.ragebotSync()
+		for flag, value in pairs(ragebotRequired) do
+			setCompatFlag(flag, value, true)
+		end
+	end
+
+	function OVX.ragebotApply(on)
+		on = on == true
+		if on and not OVX.ragebotRestore then
+			OVX.ragebotRestore = {}
+			for flag in pairs(ragebotRequired) do
+				OVX.ragebotRestore[flag] = flags[flag]
+			end
+		end
+		flags["rb_enabled"] = on
+		if on then
+			OVX.ragebotSync()
+		elseif OVX.ragebotRestore then
+			local saved = OVX.ragebotRestore
+			OVX.ragebotRestore = nil
+			for flag, value in pairs(saved) do
+				setCompatFlag(flag, value, true)
+			end
+		end
+		return on
+	end
+
+	function OVX.saFov()
+		if flags["rb_enabled"] == true then return math.huge end
+		return tonumber(flags["sa_fov"]) or 120
+	end
+
+	function OVX.saMaxDist()
+		if flags["rb_enabled"] == true then
+			return tonumber(flags["rb_max_dist"]) or 0
+		end
+		return tonumber(flags["sa_max_dist"]) or 0
+	end
+
+	local lastSync = 0
+	bind(RunService.Heartbeat:Connect(function()
+		if flags["rb_enabled"] ~= true then return end
+		local now = os.clock()
+		if now - lastSync < 0.25 then return end
+		lastSync = now
+		pcall(OVX.ragebotSync)
+	end))
+end
 do
 	function OVX.notify(text)
 		print("[OVX] " .. tostring(text))
@@ -1580,6 +2035,11 @@ do
 	OVX.vmPropertyNames = { "Material", "Color", "Transparency", "Reflectance", "MeshId", "TextureId" }
 	local viewRoots, viewParts = {}, {}
 	OVX.viewModels, OVX.viewModelParts = viewRoots, viewParts
+	local viewRefreshLock = false
+	local pendingViewRefresh = false
+	local viewRefreshScheduled = false
+	local lastViewFlush = 0
+	OVX.viewmodelUnloaded = false
 
 	local function lower(value) return string.lower(tostring(value or "")) end
 	OVX.lowerName = lower
@@ -1674,7 +2134,9 @@ do
 		return false
 	end
 
-	function OVX.refreshViewModels()
+	function OVX.refreshViewModels(force)
+		if OVX.viewmodelUnloaded then return end
+		if viewRefreshLock and force ~= true then return end
 		table.clear(viewRoots)
 		table.clear(viewParts)
 		local cam = Workspace.CurrentCamera
@@ -1709,11 +2171,54 @@ do
 		for _, root in ipairs(viewRoots) do collectViewParts(root, viewParts, 0, 6) end
 	end
 
-	function OVX.queueViewRefresh()
-		OVX.refreshViewModels()
-		if OVX.sciFiApply then pcall(OVX.sciFiApply) end
-		if OVX.skinReapply then pcall(OVX.skinReapply) end
+	local flushViewRefresh
+	local function scheduleViewRefresh(delay)
+		if OVX.viewmodelUnloaded or viewRefreshScheduled then return end
+		viewRefreshScheduled = true
+		delay = clamp(tonumber(delay) or 0.06, 0, 0.5)
+		local function run()
+			viewRefreshScheduled = false
+			pendingViewRefresh = true
+			flushViewRefresh()
+		end
+		local scheduled = false
+		if type(task) == "table" and type(task.delay) == "function" then
+			scheduled = pcall(task.delay, delay, run)
+		end
+		if not scheduled then run() end
 	end
+	flushViewRefresh = function()
+		if OVX.viewmodelUnloaded or viewRefreshLock or not pendingViewRefresh then return end
+		local hz = clamp(tonumber(flags["sf_vmodel_refresh_hz"]) or 5, 1, 20)
+		local minInterval = 1 / hz
+		local now = os.clock()
+		local forceNow = OVX._forceViewFlush == true
+		if not forceNow and now - lastViewFlush < minInterval then
+			viewRefreshScheduled = false
+			scheduleViewRefresh(minInterval - (now - lastViewFlush))
+			return
+		end
+		OVX._forceViewFlush = false
+		pendingViewRefresh = false
+		viewRefreshScheduled = false
+		lastViewFlush = now
+		viewRefreshLock = true
+		local ok = pcall(function()
+			OVX.refreshViewModels(true)
+			if OVX.sciFiApply then pcall(OVX.sciFiApply) end
+			if OVX.skinReapply then pcall(OVX.skinReapply) end
+		end)
+		viewRefreshLock = false
+		if not ok then pendingViewRefresh = false end
+	end
+	function OVX.queueViewRefresh(force)
+		if OVX.viewmodelUnloaded then return end
+		pendingViewRefresh = true
+		if force then OVX._forceViewFlush = true end
+		scheduleViewRefresh(force and 0 or 0.06)
+	end
+	OVX.flushViewRefresh = flushViewRefresh
+	OVX.scheduleViewRefresh = scheduleViewRefresh
 
 	local cameraEvents = {}
 	local function bindCameraEvents()
@@ -1739,6 +2244,9 @@ do
 	OVX.refreshViewModels()
 
 	function OVX.finalizeViewmodelCleanup()
+		OVX.viewmodelUnloaded = true
+		pendingViewRefresh = false
+		viewRefreshScheduled = false
 		OVX.restoreAllVmOriginals(true)
 		table.clear(viewRoots)
 		table.clear(viewParts)
@@ -2341,13 +2849,25 @@ do
 		if OVX.sciFiApply then pcall(OVX.sciFiApply) end
 	end
 	local reapplyCurrent
+	local skinPending, skinTimer = false, false
+	local skinUiPending, skinUiTimer = false, false
 	local function deferSkin()
-		local delay = clamp(tonumber(flags["skin_delay"]) or 0.05, 0, 1)
-		if type(task) == "table" and type(task.delay) == "function" then
-			task.delay(delay, function() pcall(reapplyCurrent) end)
-		else
+		if OVX.viewmodelUnloaded then return end
+		skinPending = true
+		if skinTimer then return end
+		skinTimer = true
+		local delay = clamp(tonumber(flags["skin_delay"]) or 0.05, 0.03, 0.3)
+		local function run()
+			skinTimer = false
+			if not skinPending or OVX.viewmodelUnloaded then return end
+			skinPending = false
 			pcall(reapplyCurrent)
 		end
+		local scheduled = false
+		if type(task) == "table" and type(task.delay) == "function" then
+			scheduled = pcall(task.delay, delay, run)
+		end
+		if not scheduled then run() end
 	end
 	reapplyCurrent = function()
 		if flags["skin_enabled"] == false or flags["skin_auto_reapply"] == false then return end
@@ -2368,6 +2888,23 @@ do
 	OVX.skinReapply = reapplyCurrent
 	local function refreshSkinUI()
 		if OVX.skinRefreshUI then pcall(OVX.skinRefreshUI) end
+	end
+	local function scheduleSkinUI()
+		if OVX.viewmodelUnloaded then return end
+		skinUiPending = true
+		if skinUiTimer then return end
+		skinUiTimer = true
+		local function run()
+			skinUiTimer = false
+			if not skinUiPending or OVX.viewmodelUnloaded then return end
+			skinUiPending = false
+			pcall(refreshSkinUI)
+		end
+		local scheduled = false
+		if type(task) == "table" and type(task.delay) == "function" then
+			scheduled = pcall(task.delay, 0.2, run)
+		end
+		if not scheduled then run() end
 	end
 	local function setSkinInternal(weaponName, skinName, callExternal)
 		weaponName = tostring(weaponName or "")
@@ -2495,7 +3032,7 @@ do
 		if root and root.DescendantAdded then
 			bind(root.DescendantAdded:Connect(function(obj)
 				indexAsset(obj)
-				refreshSkinUI()
+				scheduleSkinUI()
 				deferSkin()
 			end))
 		end
@@ -3675,8 +4212,8 @@ do
 		if not camera or not flags["sa_enabled"] then return nil end
 		local m = UIS:GetMouseLocation()
 		local crosshair = v2new(m.X, m.Y)
-		local fov      = flags["sa_fov"] or 120
-		local maxd     = flags["sa_max_dist"] or 0
+		local fov      = OVX.saFov()
+		local maxd     = OVX.saMaxDist()
 		local teamChk  = flags["sa_team_check"]
 		local bone     = flags["sa_force_head"] ~= false and "Head" or (flags["sa_bone"] or "Head")
 		local lchar = lp.Character
@@ -3822,9 +4359,10 @@ do
 			return
 		end
 		local m = UIS:GetMouseLocation()
-		fovCircle.Visible = flags["sa_show_fov"] and true or false
+		local radius = OVX.saFov()
+		fovCircle.Visible = flags["sa_show_fov"] and radius < math.huge and true or false
 		fovCircle.Position = v2new(m.X, m.Y)
-		fovCircle.Radius = flags["sa_fov"] or 120
+		if fovCircle.Visible then fovCircle.Radius = radius end
 		local tgt = _saTarget
 		local allowNpc = flags["sa_snapline_npc"] ~= false
 		local canDraw = (flags["sa_snapline"] or flags["sa_cross"]) and tgt
@@ -4058,8 +4596,13 @@ do
 		end
 		local m = UIS:GetMouseLocation()
 		local crosshair = v2new(m.X, m.Y)
-		local fov = flags["sa_fov"] or 120 -- single FOV source: Silent Aim
-		local maxd = flags["tb_max_dist"] or flags["sa_max_dist"] or 0
+		local fov = OVX.saFov() -- single FOV source: Silent Aim / Ragebot INF
+		local maxd = tonumber(flags["tb_max_dist"]) or 0
+		if maxd <= 0 and flags["rb_enabled"] == true then
+			maxd = OVX.saMaxDist()
+		elseif maxd <= 0 then
+			maxd = tonumber(flags["sa_max_dist"]) or 0
+		end
 		local bone = flags["sa_force_head"] ~= false and "Head" or (flags["sa_bone"] or "Head")
 		local teamChk = flags["sa_team_check"]
 		local lhrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -6374,6 +6917,174 @@ do
 	end))
 end
 
+
+-- ================================================================
+-- // 3D SELF ESP PREVIEW
+-- //   A live box, highlight and billboard attached to the local character,
+-- //   driven by the exact same ESP flags as the real player ESP.
+-- ================================================================
+do
+	local guiParent = CoreGui
+	pcall(function()
+		if type(gethui) == "function" then guiParent = gethui() or guiParent end
+	end)
+	local api = {}
+	OVX.espSelfPreview = api
+	local currentChar = nil
+	local lastAt = 0
+
+	local function set(instance, key, value)
+		if instance then pcall(function() instance[key] = value end) end
+	end
+	local function destroy(instance)
+		if instance then pcall(function() instance:Destroy() end) end
+	end
+	local function clear()
+		destroy(api.highlight); destroy(api.box); destroy(api.billboard)
+		api.highlight, api.box, api.billboard = nil, nil, nil
+		api.name, api.health, api.info, api.healthFill, api.healthGradient = nil, nil, nil, nil, nil
+		currentChar = nil
+	end
+	api.destroy = clear
+	api.setEnabled = function(state)
+		flags["esp_self_preview_3d"] = state == true
+		pcall(api.refresh)
+	end
+
+	local function makeLabel(parent, name, y, text, color)
+		local label = Instance.new("TextLabel")
+		set(label, "Name", name)
+		set(label, "BackgroundTransparency", 1)
+		set(label, "Font", Enum.Font.GothamBold)
+		set(label, "TextSize", 12)
+		set(label, "TextColor3", color)
+		set(label, "Text", text)
+		set(label, "Position", UDim2.fromOffset(0, y))
+		set(label, "Size", UDim2.fromOffset(220, 16))
+		set(label, "TextXAlignment", Enum.TextXAlignment.Center)
+		set(label, "Parent", parent)
+		return label
+	end
+
+	local function build(char)
+		clear()
+		if not char then return end
+		local root = char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart
+		local head = char:FindFirstChild("Head") or root
+		if not root then return end
+		currentChar = char
+
+		local highlight = Instance.new("Highlight")
+		set(highlight, "Name", "OVXSelfPreviewHighlight")
+		set(highlight, "Adornee", char)
+		set(highlight, "Parent", guiParent)
+		api.highlight = highlight
+
+		local box = Instance.new("BoxHandleAdornment")
+		set(box, "Name", "OVXSelfPreviewBox")
+		set(box, "Adornee", root)
+		set(box, "Parent", guiParent)
+		api.box = box
+
+		local billboard = Instance.new("BillboardGui")
+		set(billboard, "Name", "OVXSelfPreviewInfo")
+		set(billboard, "Adornee", head or root)
+		set(billboard, "Size", UDim2.fromOffset(220, 86))
+		set(billboard, "StudsOffset", v3new(0, 2.8, 0))
+		set(billboard, "AlwaysOnTop", true)
+		set(billboard, "MaxDistance", 10000)
+		set(billboard, "Parent", guiParent)
+		api.billboard = billboard
+		api.name = makeLabel(billboard, "Name", 0, "YOU  •  3D ESP PREVIEW", c3(255, 255, 255))
+		api.health = makeLabel(billboard, "Health", 17, "HP 100%", c3(255, 255, 255))
+		api.info = makeLabel(billboard, "Info", 34, "0m  •  Hands", c3(200, 200, 200))
+
+		local hpBg = Instance.new("Frame")
+		set(hpBg, "Name", "HealthBackground")
+		set(hpBg, "BackgroundColor3", c3(28, 28, 38))
+		set(hpBg, "BorderSizePixel", 0)
+		set(hpBg, "Position", UDim2.fromOffset(10, 60))
+		set(hpBg, "Size", UDim2.fromOffset(200, 9))
+		set(hpBg, "Parent", billboard)
+		local hpFill = Instance.new("Frame")
+		set(hpFill, "Name", "HealthFill")
+		set(hpFill, "BackgroundColor3", c3(0, 255, 0))
+		set(hpFill, "BorderSizePixel", 0)
+		set(hpFill, "Position", UDim2.fromOffset(0, 0))
+		set(hpFill, "Size", UDim2.new(1, 0, 1, 0))
+		set(hpFill, "Parent", hpBg)
+		local gradient = Instance.new("UIGradient", hpFill)
+		set(gradient, "Name", "OVXSelfPreviewHealthGradient")
+		api.healthFill, api.healthGradient = hpFill, gradient
+	end
+
+	function api.refresh()
+		local wants = flags["esp_self_preview_3d"] == true and flags["Enabled"] ~= false
+		if not wants then clear(); return end
+		local char = lp.Character
+		if char ~= currentChar or not api.billboard then build(char) end
+		if not api.billboard then return end
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		local maxHp = math.max(1, tonumber(hum and hum.MaxHealth) or 100)
+		local hp = clamp((tonumber(hum and hum.Health) or maxHp) / maxHp, 0, 1)
+		local boxColor = getFlagColor("Box_Color", c3(255, 255, 255))
+		local nameColor = getFlagColor("Name_Color", c3(255, 255, 255))
+		local distColor = getFlagColor("Distance_Color", c3(200, 200, 200))
+		local hpHigh = getFlagColor("Health_High", c3(0, 255, 0))
+		local hpLow = getFlagColor("Health_Low", c3(255, 0, 0))
+		local weapon = heldLabelOf(char) or "Hands"
+		local display = tostring(lp.DisplayName or lp.Name or "YOU")
+
+		set(api.box, "Adornee", char and (char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart) or nil)
+		set(api.box, "Size", v3new(3.2, 5.2, 1.2))
+		set(api.box, "Color3", boxColor)
+		set(api.box, "Transparency", 0.82)
+		set(api.box, "AlwaysOnTop", true)
+		set(api.box, "ZIndex", 3)
+		set(api.box, "Visible", getFlagBool("Boxes", false))
+
+		set(api.highlight, "Adornee", char)
+		set(api.highlight, "Enabled", getFlagBool("esp_chams", false))
+		set(api.highlight, "FillColor", getFlagColor("esp_cham_fill_color", c3(255, 255, 255)))
+		set(api.highlight, "OutlineColor", getFlagColor("esp_cham_outline_color", c3(0, 0, 0)))
+		set(api.highlight, "FillTransparency", clamp((tonumber(flags["esp_cham_fill_transparency"]) or 4) / 10, 0, 1))
+		set(api.highlight, "OutlineTransparency", clamp((tonumber(flags["esp_cham_outline_transparency"]) or 0) / 10, 0, 1))
+		pcall(function() api.highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop end)
+
+		set(api.name, "Text", display .. "  •  3D ESP PREVIEW")
+		set(api.name, "TextColor3", nameColor)
+		set(api.name, "Visible", getFlagBool("Names", false))
+		set(api.health, "Text", ("HP %d%%"):format(floor(hp * 100 + 0.5)))
+		set(api.health, "TextColor3", getFlagColor("esp_health_text_color", c3(255, 255, 255)))
+		set(api.health, "Visible", getFlagBool("esp_health_text", false))
+		set(api.info, "Text", ("0m  •  %s"):format(weapon))
+		set(api.info, "TextColor3", distColor)
+		set(api.info, "Visible", getFlagBool("Distance", false) or getFlagBool("Weapon", false))
+		set(api.healthFill, "Size", UDim2.new(hp, 0, 1, 0))
+		set(api.healthGradient, "Color", ColorSequence.new({
+			ColorSequenceKeypoint.new(0, hpLow),
+			ColorSequenceKeypoint.new(1, hpHigh),
+		}))
+		set(api.billboard, "Enabled", true)
+	end
+
+	bind(lp.CharacterAdded:Connect(function()
+		currentChar = nil
+		pcall(api.refresh)
+	end))
+	bind(lp.CharacterRemoving:Connect(clear))
+	bind(RunService.Heartbeat:Connect(function()
+		if flags["esp_self_preview_3d"] ~= true then return end
+		local now = os.clock()
+		local hz = clamp(tonumber(flags["esp_self_preview_hz"]) or 10, 2, 20)
+		if now - lastAt < 1 / hz then return end
+		lastAt = now
+		pcall(api.refresh)
+	end))
+	bind({ Disconnect = clear })
+	pcall(api.refresh)
+end
+
 -- ================================================================
 -- // UI
 -- ================================================================
@@ -6386,6 +7097,9 @@ local function update_elements()
 	local liveEsp = getgenv().esp
 	if liveEsp and liveEsp ~= esp and liveEsp.refresh_elements then
 		pcall(liveEsp.refresh_elements)
+	end
+	if OVX.espSelfPreview and OVX.espSelfPreview.refresh then
+		pcall(OVX.espSelfPreview.refresh)
 	end
 end
 
@@ -6416,6 +7130,12 @@ do
 	sa:toggle({ name = "Bow Lead & Arc", flag = "sa_bow_enabled", default = true, tooltip = "Bend the held view for bows using the ballistic arc solver" })
 	sa:button({ name = "Re-scan Remotes", callback = function()
 		if OVX.saRescan then pcall(OVX.saRescan) end
+	end })
+	sa:dropdown({ name = "Jump To Section", flag = "ui_jump_combat",
+		items = { "Silent Aim", "Weapon Mods", "Triggerbot", "Kill Aura", "Bullet Tracers", "Ragebot", "Tracer Tuning" },
+		default = "Ragebot" })
+	sa:button({ name = "Open Section", callback = function()
+		pcall(library.focus_section, library, "Combat", flags["ui_jump_combat"] or "Ragebot")
 	end })
 
 	-- Bow SA shares the same "sa_enabled" toggle as firearms above.
@@ -6461,15 +7181,10 @@ do
 	ka:slider({ name = "Range", min = 3, max = 30, default = 8, interval = 1, suffix = " studs", flag = "ka_range" })
 	ka:slider({ name = "Swing Speed", min = 1, max = 20, default = 10, interval = 1, flag = "ka_speed" })
 
-	local bm = column2:section({ name = "Bullet Manipulation" })
-	bm:toggle({ name = "Gun Peek", flag = "bp_enabled", tooltip = "Covered target: sidesteps your character so the muzzle itself clears the cover and fires legally — camera holds on the target while peeked, then snaps back" })
-	bm:toggle({ name = "Desync Peek", flag = "bp_desync", tooltip = "EXPERIMENTAL: peeks by moving the server copy of your character instead of teleporting your real body. Off = real teleport sidestep (reliable damage). On = no teleport, but shots may not register if the spoofed position doesn't reach the server" })
-	bm:slider({ name = "Peek Distance", min = 2, max = 20, default = 8, interval = 1, suffix = " studs", flag = "bp_max_offset", tooltip = "How far the character sidesteps around cover to find a clear firing spot" })
-	bm:toggle({ name = "No Spread (packet)", flag = "pkt_nospread", tooltip = "Recenters Fire.direction on the held view server-side. Auto-skipped while Silent Aim is redirecting." })
-	bm:toggle({ name = "Trajectory Arc", flag = "traj_arc", tooltip = "Draws the silent-aim shot's arc with a green (hit) / red (miss) impact marker" })
 
-	local column3 = combatTab:column()
-	local bt = column3:section({ name = "Bullet Tracers" })
+	-- Bullet Tracers now takes the old Bullet Manipulation slot so it is
+	-- visible on the first Combat page.
+	local bt = column2:section({ name = "Bullet Tracers" })
 	bt:toggle({ name = "Enabled", flag = "sf_tracers_enabled", tooltip = "Muzzle-to-impact Sci-Fi beams; independent of Silent Aim and player ESP tracers" })
 	bt:toggle({ name = "Use Tracer Preset", flag = "sf_tracer_use_preset", default = true, tooltip = "Use one of the eight Sci-Fi presets instead of the custom tracer color" })
 	bt:dropdown({ name = "Tracer Preset", flag = "sf_tracer_preset", items = OVX.sciFiPresetNames, default = "Cyan" })
@@ -6481,6 +7196,17 @@ do
 		if OVX.fireTestTracer then pcall(OVX.fireTestTracer) end
 	end })
 
+	local column3 = combatTab:column()
+	local rage = column3:section({ name = "Ragebot" })
+	rage:toggle({ name = "Ragebot", flag = "rb_enabled", tooltip = "Locks all Silent Aim toggles ON, forces Head, disables Bow Lead & Arc, and removes the FOV limit", callback = function(v)
+		if OVX.ragebotApply then pcall(OVX.ragebotApply, v) end
+	end })
+	rage:slider({ name = "Hit Distance", min = 0, max = 5000, default = 0, interval = 10, suffix = "m", flag = "rb_max_dist", tooltip = "0 = unlimited; otherwise the maximum Ragebot acquisition distance" })
+	rage:label("FOV: INF • ALL HEADS • Silent Aim toggles locked ON")
+	rage:label("Bow Lead & Arc is forced OFF while Ragebot is on.")
+	rage:button({ name = "Re-apply Ragebot State", callback = function()
+		if flags["rb_enabled"] and OVX.ragebotSync then pcall(OVX.ragebotSync) end
+	end })
 	local btTune = column3:section({ name = "Tracer Tuning" })
 	btTune:slider({ name = "Beam Width", min = 0.02, max = 3, default = 0.2, interval = 0.02, flag = "sf_tracer_width" })
 	btTune:slider({ name = "Beam Lifetime", min = 0.03, max = 3, default = 0.25, interval = 0.01, suffix = "s", flag = "sf_tracer_lifetime" })
@@ -6496,6 +7222,14 @@ do
 	btTune:toggle({ name = "Include Bow Shots", flag = "sf_tracer_include_bow", default = true })
 	btTune:toggle({ name = "Double-Gun Tracers", flag = "sf_tracer_double_gun", default = true })
 end
+
+	-- Bullet Manipulation was removed from the UI, but its logic and config
+	-- flags stay available for configs and console use.
+	registerFlagSetter("bp_enabled", function(value) flags["bp_enabled"] = value end)
+	registerFlagSetter("bp_desync", function(value) flags["bp_desync"] = value end)
+	registerFlagSetter("bp_max_offset", function(value) flags["bp_max_offset"] = value end)
+	registerFlagSetter("pkt_nospread", function(value) flags["pkt_nospread"] = value end)
+	registerFlagSetter("traj_arc", function(value) flags["traj_arc"] = value end)
 
 -- ——— SOUNDS (v2.1 port: hitsounds on the server's HitMarker) ———
 local soundsTab = window:tab({ name = "Sounds" })
@@ -6533,6 +7267,12 @@ do
 	section:toggle({ name = "Enabled", flag = "Enabled", default = true, callback = update_elements })
 	section:toggle({ name = "Team Check", flag = "esp_team_check" })
 	section:slider({ name = "Max Distance", min = 0, max = 2000, default = 0, interval = 10, suffix = "m", flag = "esp_max_dist" })
+	section:dropdown({ name = "Jump To Section", flag = "ui_jump_visuals",
+		items = { "Player ESP", "Extra", "ESP Fine Tuning", "Gun Chams", "Hand Chams", "Viewmodel Shared", "Skin Changer", "Skin Diagnostics" },
+		default = "Gun Chams" })
+	section:button({ name = "Open Section", callback = function()
+		pcall(library.focus_section, library, "Visuals", flags["ui_jump_visuals"] or "Gun Chams")
+	end })
 
 	section:toggle({ name = "Boxes", flag = "Boxes", default = true, callback = update_elements })
 		:colorpicker({ name = "Box Color", flag = "Box_Color", color = c3(255,255,255), callback = update_elements })
@@ -6556,6 +7296,10 @@ do
 
 	section:toggle({ name = "Weapon", flag = "Weapon", callback = update_elements })
 		:colorpicker({ name = "Weapon Color", flag = "Weapon_Color", color = c3(255,220,80), callback = update_elements })
+	section:toggle({ name = "2D ESP Preview", flag = "esp_preview_2d", default = true, callback = update_elements, tooltip = "Live Drawing panel beside the Vault window" })
+	section:toggle({ name = "3D Preview On Self", flag = "esp_self_preview_3d", default = true, callback = update_elements, tooltip = "Live box, highlight and health/name billboard attached to your own character" })
+	section:slider({ name = "3D Preview Rate", min = 2, max = 20, default = 10, interval = 1, suffix = " Hz", flag = "esp_self_preview_hz" })
+	section:button({ name = "Refresh ESP Previews", callback = update_elements })
 
 	-- extra ESP controls not mirrored in the preview panel
 	local column2 = visualsTab:column()
@@ -6599,7 +7343,7 @@ do
 	hands:slider({ name = "Hand Transparency", min = 0, max = 10, default = 0, interval = 1, suffix = "/10", flag = "sf_hand_transparency" })
 	hands:slider({ name = "Hand Reflectance", min = 0, max = 10, default = 2, interval = 1, suffix = "/10", flag = "sf_hand_reflectance" })
 
-	local guns = column4:section({ name = "Gun Chams" })
+	local guns = column3:section({ name = "Gun Chams" })
 	guns:toggle({ name = "Gun Chams", flag = "sf_gun_enabled" })
 	guns:dropdown({ name = "Gun Material", flag = "sf_gun_material", items = OVX.sciFiMaterials, default = "ForceField" })
 	guns:toggle({ name = "Use Gun Preset", flag = "sf_gun_use_preset", default = true })
@@ -6788,26 +7532,8 @@ do
 	end })
 
 	local uiSec = gdCol:section({ name = "Interface" })
-	uiSec:toggle({ name = "Free Mouse", flag = "ui_free_mouse", default = true, tooltip = "Releases the cursor while the Vault menu is open so controls can be clicked", callback = function(v)
-		if window._compatSetMenuVisible then
-			pcall(window._compatSetMenuVisible, library.menu_visible == true, v ~= false)
-		end
-	end })
-	local uiScreen = utility:ScreenSize()
-	local maxW = math.max(500, math.floor(uiScreen.X - 80))
-	local maxH = math.max(420, math.floor(uiScreen.Y - 80))
-	local initW = math.floor(window.frame.Size.X)
-	local initH = math.floor(window.frame.Size.Y)
-	local function applyUiSize()
-		local w = tonumber(flags["ui_width"]) or initW
-		local h = tonumber(flags["ui_height"]) or initH
-		if window.resize then window:resize(w, h) end
-	end
-	uiSec:slider({ name = "Window Width", min = 500, max = maxW, default = initW, interval = 10, suffix = " px", flag = "ui_width", callback = function() applyUiSize() end })
-	uiSec:slider({ name = "Window Height", min = 420, max = maxH, default = initH, interval = 10, suffix = " px", flag = "ui_height", callback = function() applyUiSize() end })
-	uiSec:slider({ name = "HUD Rate", min = 1, max = 12, default = 4, interval = 1, suffix = " Hz", flag = "ui_hud_hz", tooltip = "Target info / inventory / staff overlay refresh rate" })
-	uiSec:label("Drag the purple grip at the bottom-right to resize.")
-	uiSec:label("Mouse wheel over the menu scrolls long tabs.")
+	uiSec:label("Window size, menu key, themes and configs are in Settings.")
+
 
 	-- desync (v2.1 port) + overlay windows
 	local dcol = miscTab:column()
@@ -6911,6 +7637,179 @@ do
 	end })
 end
 
+
+-- ——— SETTINGS (configs, auto load, UI essentials) ———
+do
+	local settingsTab = window:tab({ name = "Settings" })
+	local CFG_FOLDER = "OVX/Configs"
+	local CFG_AUTO = "OVX/autoload.json"
+	local http = game:GetService("HttpService")
+
+	local function notify(text)
+		pcall(function() library:notification({ text = text, time = 2.5 }) end)
+	end
+	local function cleanName(name)
+		name = tostring(name or "Default"):gsub("[^%w%-%_ ]", "_")
+		if name == "" then name = "Default" end
+		return name
+	end
+	local function ensureFolder()
+		pcall(makefolder, "OVX")
+		pcall(makefolder, CFG_FOLDER)
+	end
+	local function configPath(name)
+		return CFG_FOLDER .. "/" .. cleanName(name) .. ".json"
+	end
+	local function listConfigs()
+		local out = {}
+		local ok, files = pcall(listfiles, CFG_FOLDER)
+		if ok and type(files) == "table" then
+			for _, path in ipairs(files) do
+				local base = tostring(path):match("([^/\\]+)%.json$")
+				if base then out[#out + 1] = base end
+			end
+		end
+		table.sort(out)
+		if #out == 0 then out[1] = "Default" end
+		return out
+	end
+	local function readAuto()
+		local ok, data = pcall(readfile, CFG_AUTO)
+		if not ok or type(data) ~= "string" or data == "" then return nil end
+		local decodedOk, decoded = pcall(function() return http:JSONDecode(data) end)
+		if decodedOk and type(decoded) == "table" then return decoded end
+		return nil
+	end
+	local function saveAuto(enabled, name)
+		ensureFolder()
+		local ok, encoded = pcall(function()
+			return http:JSONEncode({ enabled = enabled == true, name = cleanName(name) })
+		end)
+		if not ok then return false end
+		pcall(writefile, CFG_AUTO, encoded)
+		return true
+	end
+	local function saveConfig(name)
+		name = cleanName(name)
+		ensureFolder()
+		local json = library:get_config()
+		local ok = pcall(writefile, configPath(name), json)
+		if not ok then notify("Could not save config: " .. name); return false end
+		notify("Saved config: " .. name)
+		return true
+	end
+	local function loadConfig(name)
+		name = cleanName(name)
+		local ok, data = pcall(readfile, configPath(name))
+		if not ok or type(data) ~= "string" or data == "" then
+			notify("Config not found: " .. name)
+			return false
+		end
+		local loaded = library:load_config(data)
+		if loaded and OVX.refreshAllVisuals then pcall(OVX.refreshAllVisuals) end
+		notify(loaded and ("Loaded config: " .. name) or ("Invalid config: " .. name))
+		return loaded
+	end
+	OVX.configList = listConfigs
+	OVX.configSave = saveConfig
+	OVX.configLoad = loadConfig
+	OVX.configReadAuto = readAuto
+	OVX.configSaveAuto = saveAuto
+	OVX.configPath = configPath
+
+	local col1 = settingsTab:column()
+	local configs = col1:section({ name = "Configs" })
+	local cfgDropdown
+	configs:textbox({ name = "Config Name", flag = "cfg_name", default = "Default", callback = function(value)
+		if flags["cfg_auto_load"] == true then saveAuto(true, value) end
+	end })
+	cfgDropdown = configs:dropdown({ name = "Saved Configs", flag = "cfg_selected", items = listConfigs(), default = "Default" })
+	configs:button({ name = "Save Config", callback = function()
+		if saveConfig(flags["cfg_name"] or "Default") then
+			pcall(function() cfgDropdown:Refresh(listConfigs()); cfgDropdown:Update() end)
+		end
+	end })
+	configs:button({ name = "Load Config", callback = function()
+		loadConfig(flags["cfg_selected"] or flags["cfg_name"] or "Default")
+	end })
+	configs:button({ name = "Use Selected Name", callback = function()
+		local name = flags["cfg_selected"] or "Default"
+		local setter = library.config_flags["cfg_name"]
+		if setter then pcall(setter, name) else flags["cfg_name"] = name end
+	end })
+	configs:toggle({ name = "Auto Load Config", flag = "cfg_auto_load", tooltip = "Loads the selected config shortly after every execution", callback = function(v)
+		saveAuto(v, flags["cfg_name"] or "Default")
+	end })
+	configs:button({ name = "Refresh Config List", callback = function()
+		pcall(function() cfgDropdown:Refresh(listConfigs()); cfgDropdown:Update() end)
+	end })
+	configs:dropdown({ name = "Jump To Section", flag = "ui_jump_settings", items = { "Configs", "Interface", "UI Essentials" }, default = "Configs" })
+	configs:button({ name = "Open Section", callback = function()
+		pcall(library.focus_section, library, "Settings", flags["ui_jump_settings"] or "Configs")
+	end })
+	configs:label("Configs are stored in OVX/Configs as JSON.")
+
+	local col2 = settingsTab:column()
+	local interface = col2:section({ name = "Interface" })
+	interface:toggle({ name = "Always On: Fix Color Picker", flag = "ui_modal_guard", default = true, tooltip = "Always-on guard closes stuck color pickers, dropdowns, textboxes and keybind mode menus on right-click / Escape" })
+	interface:toggle({ name = "Free Mouse", flag = "ui_free_mouse", default = true, tooltip = "Releases the cursor while the Vault menu is open so controls can be clicked", callback = function(v)
+		if window._compatSetMenuVisible then
+			pcall(window._compatSetMenuVisible, library.menu_visible == true, v ~= false)
+		end
+	end })
+	interface:keybind({ name = "Menu Key", flag = "ui_menu_key", def = "Insert", mode = "toggle", tooltip = "RightShift remains a built-in fallback menu key" })
+	local uiScreen = utility:ScreenSize()
+	local maxW = math.max(500, math.floor(uiScreen.X - 80))
+	local maxH = math.max(420, math.floor(uiScreen.Y - 80))
+	local initW = math.floor(window.frame.Size.X)
+	local initH = math.floor(window.frame.Size.Y)
+	local function applyUiSize()
+		local w = tonumber(flags["ui_width"]) or initW
+		local h = tonumber(flags["ui_height"]) or initH
+		if window.resize then window:resize(w, h) end
+	end
+	interface:slider({ name = "Window Width", min = 500, max = maxW, default = initW, interval = 10, suffix = " px", flag = "ui_width", callback = applyUiSize })
+	interface:slider({ name = "Window Height", min = 420, max = maxH, default = initH, interval = 10, suffix = " px", flag = "ui_height", callback = applyUiSize })
+	interface:slider({ name = "HUD Rate", min = 1, max = 12, default = 4, interval = 1, suffix = " Hz", flag = "ui_hud_hz", tooltip = "Target info / inventory / staff overlay refresh rate" })
+	interface:colorpicker({ name = "Accent", flag = "ui_accent", color = compatTheme.accent, callback = function(value)
+		library:update_theme("accent", toColor3(value) or compatTheme.accent)
+	end })
+	interface:colorpicker({ name = "Background", flag = "ui_background", color = compatTheme.cont, callback = function(value)
+		library:update_theme("cont", toColor3(value) or compatTheme.cont)
+	end })
+	interface:colorpicker({ name = "Outline", flag = "ui_outline", color = compatTheme.outline2, callback = function(value)
+		library:update_theme("outline2", toColor3(value) or compatTheme.outline2)
+	end })
+	interface:label("Drag the purple grip at the bottom-right to resize.")
+	interface:label("Mouse wheel over the menu cycles long-tab sections.")
+
+	local col3 = settingsTab:column()
+	local essentials = col3:section({ name = "UI Essentials" })
+	essentials:button({ name = "Show Menu", callback = function() pcall(window.set_menu_visibility, true) end })
+	essentials:button({ name = "Hide Menu", callback = function() pcall(window.set_menu_visibility, false) end })
+	essentials:button({ name = "Rebuild Layout", callback = function()
+		if window._compatRebalance then pcall(window._compatRebalance) end
+		pcall(update_elements)
+	end })
+	essentials:button({ name = "Refresh Previews", callback = update_elements })
+	essentials:button({ name = "Close Stuck Menus", callback = function()
+		if window._compatCloseTransients then pcall(window._compatCloseTransients, window, true) end
+	end })
+	essentials:button({ name = "Unload Vault", callback = function()
+		local handle = getgenv().Vault
+		if handle and handle.unload then pcall(handle.unload) end
+	end })
+	essentials:label("Menu key: custom keybind or RightShift.")
+	essentials:label("Escape / right-click clears stuck transient menus.")
+end
+
+OVX.refreshAllVisuals = function()
+	pcall(update_elements)
+	local liveEsp = getgenv().esp
+	if liveEsp and liveEsp.Sync then pcall(liveEsp.Sync) end
+	if flags["rb_enabled"] == true and OVX.ragebotSync then pcall(OVX.ragebotSync) end
+end
+
 -- ——— ESP PREVIEW ———
 -- noname.hack has no 3D character preview; the compatibility layer draws a
 -- compact 2D panel from the same flags/colors as the live ESP.
@@ -6918,6 +7817,7 @@ pcall(function()
 	esp = window.esp_section:esp_preview({})
 	if esp and esp.refresh_elements then esp.refresh_elements() end
 end)
+pcall(OVX.refreshAllVisuals)
 
 -- ================================================================
 -- // INIT (library's own example order)
@@ -6931,6 +7831,20 @@ pcall(function()
 end)
 task.wait()
 pcall(function() library.old_config = library:get_config() end)
+task.delay(0.35, function()
+	pcall(function()
+		local auto = OVX.configReadAuto and OVX.configReadAuto() or nil
+		if auto and auto.enabled == true then
+			local name = auto.name or "Default"
+			local setter = library.config_flags["cfg_auto_load"]
+			if setter then pcall(setter, true) else flags["cfg_auto_load"] = true end
+			local nameSetter = library.config_flags["cfg_name"]
+			if nameSetter then pcall(nameSetter, name) else flags["cfg_name"] = name end
+			if OVX.configLoad then pcall(OVX.configLoad, name) end
+		end
+		if OVX.refreshAllVisuals then pcall(OVX.refreshAllVisuals) end
+	end)
+end)
 
 -- ================================================================
 	-- ================================================================
@@ -7122,6 +8036,8 @@ local function cleanup()
 	for _, conn in ipairs(_connections) do pcall(function() conn:Disconnect() end) end
 	table.clear(_connections)
 	if espUnload then pcall(espUnload) end
+	if library._compatPreview and library._compatPreview.destroy then pcall(library._compatPreview.destroy) end
+	if OVX.espSelfPreview and OVX.espSelfPreview.destroy then pcall(OVX.espSelfPreview.destroy) end
 	if OVX.finalizeViewmodelCleanup then pcall(OVX.finalizeViewmodelCleanup) end
 end
 
@@ -7141,23 +8057,44 @@ getgenv().VaultUnload = fullUnload
 
 -- runtime handle (tweak flags live: getgenv().Vault.flags["Enabled"] = true, or
 -- getgenv().Vault.set("Enabled", true) to fire the library's own setter)
-getgenv().Vault = {
+local vaultHandle
+vaultHandle = {
 	library = library,
 	flags = flags,
 	window = window,
 	unload = fullUnload,
-	set = function(flag, value)
+	focus = function(a, b, c)
+		if a == vaultHandle then return library.focus_section(library, b, c) end
+		return library.focus_section(library, a, b)
+	end,
+	config = function(a, b)
+		if a == vaultHandle then return OVX.configLoad(b) end
+		return OVX.configLoad(a)
+	end,
+	saveConfig = function(a, b)
+		if a == vaultHandle then return OVX.configSave(b) end
+		return OVX.configSave(a)
+	end,
+	ragebot = function(a, b)
+		if a == vaultHandle then return OVX.ragebotApply(b) end
+		return OVX.ragebotApply(a)
+	end,
+	selfPreview = OVX.espSelfPreview,
+	set = function(a, b, c)
+		local flag, value = a, b
+		if a == vaultHandle then flag, value = b, c end
 		local fn = library.config_flags and library.config_flags[flag]
 		if fn then fn(value) else flags[flag] = value end
 	end,
 }
+getgenv().Vault = vaultHandle
 
 -- noname.hack is Drawing-based, so there is no ScreenGui/TextButton
 -- "Unload Menu" tree to traverse. window:unload() handles library teardown.
 
 pcall(function() window.set_menu_visibility(true) end)
 
-print("[OVX] loaded — silent aim + triggerbot + bullet tracers + Sci-Fi hand/gun chams + skin changer + v5 gradient ESP + ESP/world + speed/phase/spider/freecam + kill aura + autofarm + hitsounds + trajectory arc + desync + inventory viewer + crosshair info + staff panel")
+print("[OVX] loaded — silent aim + Ragebot + triggerbot + bullet tracers + Sci-Fi hand/gun chams + skin changer + v5 gradient ESP + 2D/3D ESP previews + Settings/configs + ESP/world + speed/phase/spider/freecam + kill aura + autofarm + hitsounds + trajectory arc + desync + inventory viewer + crosshair info + staff panel")
 
 -- external state bridge (for console/state analysis + remote toggling)
 getgenv().__ovx = { flags = flags, library = library, setf = library.config_flags, window = window, state = OVX }
