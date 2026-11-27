@@ -269,13 +269,51 @@ do
             self.shit.colorpicker:Close()
         end
     end
-]==], [==[    function window.HideUselessDumbassFuckingShitStopPastingMyCodePleaseYouAreSkidAndImGayILikeBigBlackManOkNoProblemThisIsASexcretFuncteiotieitns4epoivi2n45obvi6j45bv74gvho4hgv487(self)
-        if self.shit.dropdown and self.shit.dropdown.Close then pcall(self.shit.dropdown.Close, self.shit.dropdown) end
-        if self.shit.textbox and self.shit.textbox.Stop then pcall(self.shit.textbox.Stop, self.shit.textbox) end
-        if self.shit.keybind and self.shit.keybind.Close then pcall(self.shit.keybind.Close, self.shit.keybind) end
-        if self.shit.colorpicker and self.shit.colorpicker.Close then pcall(self.shit.colorpicker.Close, self.shit.colorpicker) end
+]==], [==[    function window:OVXCloseTransients(except)
+        local s = self.shit or {}
+        local function closeOne(key, method)
+            local entry = s[key]
+            if entry and entry ~= except and type(entry[method]) == "function" then
+                pcall(entry[method], entry)
+            end
+            if s[key] ~= except then s[key] = nil end
+        end
+        closeOne("dropdown", "Close")
+        closeOne("textbox", "Stop")
+        closeOne("keybind", "Close")
+        closeOne("colorpicker", "Close")
+    end
+
+    function window.HideUselessDumbassFuckingShitStopPastingMyCodePleaseYouAreSkidAndImGayILikeBigBlackManOkNoProblemThisIsASexcretFuncteiotieitns4epoivi2n45obvi6j45bv74gvho4hgv487(self)
+        self:OVXCloseTransients(nil)
+        local function closeAgain()
+            self:OVXCloseTransients(nil)
+        end
+        if type(task) == "table" and type(task.defer) == "function" then
+            pcall(task.defer, closeAgain)
+        elseif type(task) == "table" and type(task.delay) == "function" then
+            pcall(task.delay, 0, closeAgain)
+        else
+            closeAgain()
+        end
     end
 ]==])
+
+	-- One transient control at a time. Every Open/Start clears the others first,
+	-- Close/Stop only clears its own pointer, and tab/menu changes close everything.
+	patchAll('window:HideUselessDumbassFuckingShitStopPastingMyCodePleaseYouAreSkidAndImGayILikeBigBlackManOkNoProblemThisIsASexcretFuncteiotieitns4epoivi2n45obvi6j45bv74gvho4hgv487()',
+		'window:OVXCloseTransients(self)')
+	patchAll('self:HideUselessDumbassFuckingShitStopPastingMyCodePleaseYouAreSkidAndImGayILikeBigBlackManOkNoProblemThisIsASexcretFuncteiotieitns4epoivi2n45obvi6j45bv74gvho4hgv487()',
+		'self:OVXCloseTransients(nil)')
+	patchAll('window.shit.dropdown = nil', 'if window.shit.dropdown == self then window.shit.dropdown = nil end')
+	patchAll('window.shit.textbox = nil', 'if window.shit.textbox == self then window.shit.textbox = nil end')
+	patchAll('window.shit.keybind = nil', 'if window.shit.keybind == self then window.shit.keybind = nil end')
+	patchOnce('function dropdown.Open(self)\n', 'function dropdown.Open(self)\n                    if self.Close then pcall(self.Close, self) end\n                    window:OVXCloseTransients(self)\n')
+	patchOnce('function keybind.Open(self)\n', 'function keybind.Open(self)\n                    if self.Close then pcall(self.Close, self) end\n')
+	patchOnce('function colorpicker.Open(self)\n', 'function colorpicker.Open(self)\n                    if self.Close then pcall(self.Close, self) end\n')
+	patchOnce('function textbox.Start(self)\n', 'function textbox.Start(self)\n                    window:OVXCloseTransients(self)\n')
+	patchOnce('function window.SelectTab(self, name)\n\n        if self.fading then return end\n',
+		'function window.SelectTab(self, name)\n\n        if self.fading then return end\n        self:OVXCloseTransients(nil)\n')
 
 	patchOnce('                    keybind_value.Text = utility.short_keybind_names[self.value] or self.value:upper()',
 		[==[                    if self.mode == "always" then
@@ -397,10 +435,7 @@ do
                     self.instances = {}
                     if window.shit.colorpicker == self then window.shit.colorpicker = nil end
                     local function closeOthers()
-                        local s = window.shit or {}
-                        if s.dropdown and s.dropdown.Close then pcall(s.dropdown.Close, s.dropdown) end
-                        if s.textbox and s.textbox.Stop then pcall(s.textbox.Stop, s.textbox) end
-                        if s.keybind and s.keybind.Close then pcall(s.keybind.Close, s.keybind) end
+                        if window.OVXCloseTransients then pcall(window.OVXCloseTransients, window, self) end
                     end
                     if type(task) == "table" and type(task.defer) == "function" then
                         pcall(task.defer, closeOthers)
@@ -426,7 +461,7 @@ local function setDefaultFlag(name, value)
 	if library.flags[name] == nil then library.flags[name] = value end
 end
 setDefaultFlag("sa_enabled", true)
-setDefaultFlag("sa_force_head", true)
+setDefaultFlag("sa_force_head", false)
 setDefaultFlag("sa_instant_hit", true)
 setDefaultFlag("sa_remote_jack", true)
 setDefaultFlag("sa_bow_enabled", true)
@@ -540,6 +575,7 @@ setDefaultFlag("ds_rz", 0)
 setDefaultFlag("tb_max_dist", 0)
 setDefaultFlag("rb_enabled", false)
 setDefaultFlag("rb_enabled_quick", false)
+setDefaultFlag("rb_fov_radius", 10000)
 setDefaultFlag("rb_max_dist", 0)
 setDefaultFlag("esp_preview_2d", true)
 setDefaultFlag("esp_self_preview_3d", true)
@@ -1359,6 +1395,7 @@ function library:window(info)
 	end
 	function nativeWindow:_compatCloseTransients(includeKeybind)
 		local function closeNow()
+			if self.OVXCloseTransients then pcall(self.OVXCloseTransients, self, nil) end
 			local s = self.shit or {}
 			pcall(function() if s.dropdown and s.dropdown.Close then s.dropdown:Close() end end)
 			pcall(function() if s.textbox and s.textbox.Stop then s.textbox:Stop() end end)
@@ -1876,6 +1913,21 @@ do
 		sa_remote_jack = true,
 		sa_bone = "Head",
 		sa_bow_enabled = false,
+		wm_norecoil = true,
+		wm_nospread = true,
+		wm_nosway = true,
+		wm_instantads = true,
+		wm_autofire = true,
+		wm_rapidfire = true,
+		wm_rpm = 1200,
+		wm_instantcharge = true,
+		wm_fastcycle = true,
+		wm_range = true,
+		tb_enabled = true,
+		tb_npc = true,
+		tb_visible = false,
+		tb_skip_holding = false,
+		tb_max_dist = 0,
 	}
 	OVX.ragebotLocked = ragebotRequired
 	OVX.ragebotRestore = nil
@@ -1922,8 +1974,24 @@ do
 	end
 
 	function OVX.saFov()
-		if flags["rb_enabled"] == true then return math.huge end
+		if flags["rb_enabled"] == true then
+			local radius = tonumber(flags["rb_fov_radius"]) or 10000
+			return math.max(1000, math.min(50000, radius))
+		end
 		return tonumber(flags["sa_fov"]) or 120
+	end
+
+	function OVX.ragebotTargetScore(part, camera, crosshair, fov)
+		if not part or not camera then return nil end
+		local ok, score = pcall(function()
+			local sp, on = camera:WorldToViewportPoint(part.Position)
+			local inFront = on and sp.Z > 0
+			local screenD = inFront and (v2new(sp.X, sp.Y) - crosshair).Magnitude or fov
+			if inFront and screenD > fov then return nil end
+			local worldD = (part.Position - camera.CFrame.Position).Magnitude
+			return worldD + screenD / 100000
+		end)
+		return ok and score or nil
 	end
 
 	function OVX.saMaxDist()
@@ -4252,24 +4320,52 @@ do
 	local crossH = Drawingnew("Line")
 	crossH.Thickness = 1; crossH.Visible = false
 
+	local randomBoneCache = setmetatable({}, { __mode = "k" })
+	math.randomseed(math.floor(os.clock() * 1000) + 42)
+	local function pickRandomBone(model)
+		local now = os.clock()
+		local cached = randomBoneCache[model]
+		if cached and cached.part and cached.part.Parent and now < cached.expires then
+			return cached.part
+		end
+		local parts = {}
+		for _, child in ipairs(model:GetChildren()) do
+			if child:IsA("BasePart") then parts[#parts + 1] = child end
+		end
+		if #parts == 0 then
+			return model:FindFirstChild("Head") or model:FindFirstChild("HumanoidRootPart")
+		end
+		local part = parts[math.random(1, #parts)]
+		randomBoneCache[model] = { part = part, expires = now + 0.35 }
+		return part
+	end
+	local function closestToCrosshair(model, camera, crosshair)
+		local best, bestD
+		for _, child in ipairs(model:GetChildren()) do
+			if child:IsA("BasePart") then
+				local sp, on = camera:WorldToViewportPoint(child.Position)
+				local d
+				if on and sp.Z > 0 then
+					d = (v2new(sp.X, sp.Y) - crosshair).Magnitude
+				else
+					d = (child.Position - camera.CFrame.Position).Magnitude * 1000
+				end
+				if not bestD or d < bestD then bestD, best = d, child end
+			end
+		end
+		return best or model:FindFirstChild("Head") or model:FindFirstChild("HumanoidRootPart")
+	end
 	local function pickBone(model, bone, crosshair, camera)
 		if bone == "Head" then
 			return model:FindFirstChild("Head") or model:FindFirstChild("HumanoidRootPart")
 		elseif bone == "Torso / HRP" then
 			return model:FindFirstChild("UpperTorso") or model:FindFirstChild("HumanoidRootPart") or model:FindFirstChild("Torso")
-		else -- Closest part to the crosshair
-			local best, bestD
-			for _, p in ipairs(model:GetChildren()) do
-				if p:IsA("BasePart") then
-					local sp, on = camera:WorldToViewportPoint(p.Position)
-					if on and sp.Z > 0 then
-						local d = (v2new(sp.X, sp.Y) - crosshair).Magnitude
-						if not bestD or d < bestD then bestD = d; best = p end
-					end
-				end
-			end
-			return best
+		elseif bone == "RANDOM" then
+			return pickRandomBone(model)
+		elseif bone == "Closest To CrossHair" or bone == "Closest" then
+			return closestToCrosshair(model, camera, crosshair)
 		end
+		return closestToCrosshair(model, camera, crosshair)
 	end
 	OVX.pickBone = pickBone
 
@@ -4286,6 +4382,8 @@ do
 		local lchar = lp.Character
 		local lhrp  = lchar and lchar:FindFirstChild("HumanoidRootPart")
 		local best, bestD = nil, fov
+		local bestScore = math.huge
+		local rageScan = flags["rb_enabled"] == true
 		local function consider(model, isNpc)
 			if not model or model == lchar or not model.Parent then return end
 			local hum = model:FindFirstChildOfClass("Humanoid")
@@ -4294,6 +4392,18 @@ do
 			if maxd > 0 and lhrp and hrp and (hrp.Position - lhrp.Position).Magnitude > maxd then return end
 			local part = pickBone(model, bone, crosshair, camera)
 			if not part then return end
+			if rageScan then
+				local score = OVX.ragebotTargetScore(part, camera, crosshair, fov)
+				if not score or score >= bestScore then return end
+				local isDummy = model:GetAttribute("RangeDummy") ~= nil
+					or (model.Parent and model.Parent.Name == "Dummies")
+				bestScore = score
+				best = {
+					part = part, point = part.Position, model = model,
+					isNpc = isNpc and not isDummy, isDummy = isDummy and true or false,
+				}
+				return
+			end
 			local sp, on = camera:WorldToViewportPoint(part.Position)
 			if on and sp.Z > 0 then
 				local d = (v2new(sp.X, sp.Y) - crosshair).Magnitude
@@ -4427,9 +4537,9 @@ do
 		end
 		local m = UIS:GetMouseLocation()
 		local radius = OVX.saFov()
-		fovCircle.Visible = flags["sa_show_fov"] and radius < math.huge and true or false
+		fovCircle.Visible = flags["sa_show_fov"] == true
 		fovCircle.Position = v2new(m.X, m.Y)
-		if fovCircle.Visible then fovCircle.Radius = radius end
+		if fovCircle.Visible then fovCircle.Radius = math.max(1, math.min(radius, 5000)) end
 		local tgt = _saTarget
 		local allowNpc = flags["sa_snapline_npc"] ~= false
 		local canDraw = (flags["sa_snapline"] or flags["sa_cross"]) and tgt
@@ -4674,6 +4784,8 @@ do
 		local teamChk = flags["sa_team_check"]
 		local lhrp = char and char:FindFirstChild("HumanoidRootPart")
 		local best, bestD = nil, fov
+		local bestScore = math.huge
+		local rageScan = flags["rb_enabled"] == true
 		local function consider(model)
 			if not model or model == char then return end
 			local hum = model:FindFirstChildOfClass("Humanoid")
@@ -4684,6 +4796,12 @@ do
 				and OVX.pickBone(model, bone, crosshair, cam)
 				or model:FindFirstChild("Head")
 			if not part then return end
+			if rageScan then
+				local score = OVX.ragebotTargetScore(part, cam, crosshair, fov)
+				if not score or score >= bestScore then return end
+				bestScore, best = score, { part = part, point = part.Position, model = model }
+				return
+			end
 			local sp, on = cam:WorldToViewportPoint(part.Position)
 			if not (on and sp.Z > 0) then return end
 			local d = (v2new(sp.X, sp.Y) - crosshair).Magnitude
@@ -4704,6 +4822,7 @@ do
 	end
 	-- OVX menu / game UI holds the cursor away from center: never fire then
 	local function menuUp()
+		if flags["rb_enabled"] == true then return false end
 		if library.menu_visible == true or (nativeWindow and nativeWindow._compatMenuVisible) then return true end
 		local ok, mb = pcall(function() return UIS.MouseBehavior end)
 		if ok and mb == Enum.MouseBehavior.LockCenter then return false end
@@ -7195,15 +7314,13 @@ do
 	sa:toggle({ name = "Snapline", flag = "sa_snapline", default = true, tooltip = "Line from your crosshair to the silent-aim target — green when it's visible, red when covered" })
 	sa:toggle({ name = "Snapline NPCs", flag = "sa_snapline_npc", default = true, tooltip = "Draw snapline / target crosshair for NPC and dummy locks" })
 	sa:toggle({ name = "Target Crosshair", flag = "sa_cross", default = true, tooltip = "Draws a cross on the silent-aim target — green when it's visible, red when covered" })
-	sa:dropdown({ name = "Aim Bone", flag = "sa_bone", items = { "Head", "Torso / HRP", "Closest" }, default = "Head" })
+	sa:dropdown({ name = "Aim Bone", flag = "sa_bone", items = { "Head", "Closest To CrossHair", "RANDOM" }, default = "Head" })
 	sa:slider({ name = "FOV Radius", min = 20, max = 500, default = 120, interval = 1, flag = "sa_fov" })
-	sa:slider({ name = "Bow Lead", min = 0, max = 1.5, default = 1, interval = 0.05, flag = "sa_bow_lead" })
 	sa:slider({ name = "Max Distance", min = 0, max = 5000, default = 0, interval = 10, suffix = "m", flag = "sa_max_dist" })
 	sa:slider({ name = "Scan Rate", min = 4, max = 30, default = 12, interval = 1, suffix = " Hz", flag = "sa_scan_hz", tooltip = "Lower Hz = less CPU; 12 Hz replaces the old every-other-frame Workspace:GetDescendants() scan" })
-	sa:toggle({ name = "Force Head", flag = "sa_force_head", default = true, tooltip = "Head Force from the attached aim core; overrides Aim Bone" })
+	sa:toggle({ name = "Force Head", flag = "sa_force_head", default = false, tooltip = "Ragebot forces Head regardless; leave off to use the Aim Bone dropdown" })
 	sa:toggle({ name = "Instant Hit", flag = "sa_instant_hit", default = true, tooltip = "Send the rewritten shot's hit claim immediately" })
 	sa:toggle({ name = "Remote Jack", flag = "sa_remote_jack", default = true, tooltip = "Use multi-method Fire/Hit/Damage remote buckets" })
-	sa:toggle({ name = "Bow Lead & Arc", flag = "sa_bow_enabled", default = true, tooltip = "Bend the held view for bows using the ballistic arc solver" })
 	sa:button({ name = "Re-scan Remotes", callback = function()
 		if OVX.saRescan then pcall(OVX.saRescan) end
 	end })
@@ -7278,8 +7395,9 @@ do
 		if OVX.ragebotApply then pcall(OVX.ragebotApply, v) end
 	end })
 	rage:slider({ name = "Hit Distance", min = 0, max = 5000, default = 0, interval = 10, suffix = "m", flag = "rb_max_dist", tooltip = "0 = unlimited; otherwise the maximum Ragebot acquisition distance" })
-	rage:label("FOV: INF • ALL HEADS • Silent Aim toggles locked ON")
-	rage:label("Bow Lead & Arc is forced OFF while Ragebot is on.")
+	rage:slider({ name = "FOV Radius", min = 1000, max = 50000, default = 10000, interval = 100, suffix = " px", flag = "rb_fov_radius", tooltip = "Extended acquisition radius; Ragebot also ranks behind-camera targets by 3D distance" })
+	rage:label("FOV: 1000+ px • ALL HEADS • SA + Gun Mods + Triggerbot locked ON")
+	rage:label("Max Rapid Fire 1200 RPM • Bow Lead & Arc forced OFF")
 	rage:button({ name = "Re-apply Ragebot State", callback = function()
 		if flags["rb_enabled"] and OVX.ragebotSync then pcall(OVX.ragebotSync) end
 	end })
@@ -7308,6 +7426,8 @@ end
 	registerFlagSetter("bp_desync", function(value) flags["bp_desync"] = value end)
 	registerFlagSetter("bp_max_offset", function(value) flags["bp_max_offset"] = value end)
 	registerFlagSetter("pkt_nospread", function(value) flags["pkt_nospread"] = value end)
+	registerFlagSetter("sa_bow_lead", function(value) flags["sa_bow_lead"] = value end)
+	registerFlagSetter("sa_bow_enabled", function(value) flags["sa_bow_enabled"] = enforceRagebotFlag("sa_bow_enabled", value) end)
 	registerFlagSetter("traj_arc", function(value) flags["traj_arc"] = value end)
 
 -- ——— SOUNDS (v2.1 port: hitsounds on the server's HitMarker) ———
