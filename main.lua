@@ -1044,104 +1044,201 @@ local function attachTab(tab)
 		return column
 	end
 
-	-- Every authored section lives on one continuous two-column canvas.
-	-- Mouse wheel moves both columns; no section is omitted or hidden behind
-	-- No jump or paging control is used.
+	-- Keep the native noname two-sided section layout, then shift both sides
+	-- together with one ordinary mouse-wheel offset. Native Update still owns
+	-- section sizes, child positions and resize behavior; this clips every
+	-- drawing in each section tree to the tabs frame. No jump/paging control.
 	local function currentFrame()
 		return nativeWindow and nativeWindow.frame
 	end
 	local function viewportHeight()
 		local frame = currentFrame()
 		local h = frame and frame.Size and tonumber(frame.Size.Y) or 620
-		return math.max(120, h - 55 - 24)
+		return math.max(120, h - 55 - 6)
 	end
 	local function viewportWidth()
 		local frame = currentFrame()
-		return math.max(240, (frame and frame.Size and tonumber(frame.Size.X) or 860) - 24)
+		local w = frame and frame.Size and tonumber(frame.Size.X) or 860
+		return math.max(240, w - 24)
 	end
-	function tab:_compatBuildCanvas()
-		local left, right = {}, {}
-		self._compatCanvas = { {}, {} }
-		self._compatOrder = {}
-		for _, section in ipairs(self.sections or {}) do
-			if not section.rna then
-				if section.Update then pcall(section.Update, section) end
-				local idx = tonumber(section._compatColumnIndex) or 1
-				local sn = (idx % 2 == 0) and 2 or 1
-				section.side = sn == 1 and "left" or "right"
-				local list = sn == 1 and left or right
-				list[#list + 1] = section
-				local base = section.instances and section.instances[1]
-				local h = math.max(24, tonumber(base and base.Size and base.Size.Y) or tonumber(section.scale) or 40)
-				local canvas = self._compatCanvas[sn]
-				local y = 12 + (canvas[#canvas] and (canvas[#canvas].y + canvas[#canvas].h) or 0)
-				local item = { section = section, y = y, h = h, sn = sn, name = section.name }
-				canvas[#canvas + 1] = item
-				self._compatOrder[#self._compatOrder + 1] = item
+	local nativeTabUpdate = tab.Update
+	local function sectionBase(section)
+		return section and section.instances and section.instances[1]
+	end
+	local function asVector(value, defaultX, defaultY)
+		local x, y = tonumber(defaultX) or 0, tonumber(defaultY) or 0
+		if type(value) == "table" or type(value) == "userdata" then
+			local okX, vx = pcall(function() return value.X end)
+			local okY, vy = pcall(function() return value.Y end)
+			if okX and tonumber(vx) then x = tonumber(vx) end
+			if okY and tonumber(vy) then y = tonumber(vy) end
+		end
+		return Vector2.new(x, y)
+	end
+	local function drawingOffset(draw)
+		if not draw or not draw.GetOffset then return Vector2.new(0, 0) end
+		local ok, off = pcall(draw.GetOffset)
+		if not ok then return Vector2.new(0, 0) end
+		return asVector(off, 0, 0)
+	end
+	local function drawingSize(draw)
+		local w, h = 16, 16
+		if not draw then return w, h end
+		local ok, size = pcall(function() return draw.Size end)
+		if ok and size ~= nil then
+			if type(size) == "number" then
+				w, h = math.max(0, size), math.max(0, size)
+			else
+				local okX, vx = pcall(function() return size.X end)
+				local okY, vy = pcall(function() return size.Y end)
+				if okX and tonumber(vx) then w = math.max(0, tonumber(vx)) end
+				if okY and tonumber(vy) then h = math.max(0, tonumber(vy)) end
 			end
 		end
-		self.sides[1], self.sides[2] = left, right
-		local leftLast = self._compatCanvas[1][#self._compatCanvas[1]]
-		local rightLast = self._compatCanvas[2][#self._compatCanvas[2]]
-		local content = math.max(
-			leftLast and (leftLast.y + leftLast.h) or 0,
-			rightLast and (rightLast.y + rightLast.h) or 0)
+		return w, h
+	end
+	local function childrenOf(draw)
+		if not draw then return nil end
+		local ok, children = pcall(function() return rawget(draw, "children") end)
+		if ok and type(children) == "table" then return children end
+		return nil
+	end
+	local function collectTree(root, out, seen, skip)
+		if not root or seen[root] or (skip and skip[root]) then return end
+		seen[root] = true
+		out[root] = true
+		local children = childrenOf(root)
+		if children then
+			for _, child in ipairs(children) do
+				collectTree(child, out, seen, skip)
+			end
+		end
+	end
+	local function applySectionClip(section, item, top, maxH, maxW, visibleMenu)
+		local instances = section.instances or {}
+		local base = instances[1]
+		if not base then return end
+
+		-- Native section.instances only lists control roots; their children and
+		-- open popups are Drawing children. Build both sets so a clipped section
+		-- cannot leave headers, labels or controls painted outside the window.
+		local controlSet, controlSeen = {}, {}
+		for idx = 8, #instances do
+			collectTree(instances[idx], controlSet, controlSeen, nil)
+		end
+		local frameSet, frameSeen = {}, {}
+		for idx = 1, math.min(7, #instances) do
+			collectTree(instances[idx], frameSet, frameSeen, controlSet)
+		end
+
+		local frameClip = top < 0 or top + item.h > maxH
+		local seen = {}
+		local function visit(draw, absX, absY)
+			if not draw or seen[draw] then return end
+			seen[draw] = true
+			local w, h = drawingSize(draw)
+			local inClip = absY > -4 and absY < maxH + 4
+				and absY + h > -4 and absY + h <= maxH + 4
+				and absX > -4 and absX < maxW + 4
+				and absX + w > -4 and absX + w <= maxW + 4
+			local show = visibleMenu and inClip
+				and not (frameClip and frameSet[draw])
+			draw.Visible = show and true or false
+			local children = childrenOf(draw)
+			if children then
+				for _, child in ipairs(children) do
+					local off = drawingOffset(child)
+					visit(child, absX + off.X, absY + off.Y)
+				end
+			end
+		end
+		visit(base, item.x, top)
+	end
+
+	function tab:_compatLayout()
+		local frame = currentFrame()
+		local maxH = viewportHeight()
+		local maxW = viewportWidth()
+		local visibleMenu = self.on == true and frame ~= nil and frame.Visible == true
+
+		-- Restore the unscrolled offsets before noname recomputes its layout;
+		-- otherwise each Update would accumulate the previous scroll amount.
+		for sn = 1, 2 do
+			for _, section in ipairs(self.sides[sn] or {}) do
+				if not section.rna then
+					local base = sectionBase(section)
+					if base and section._compatBaseOffset and base.SetOffset then
+						base.SetOffset(section._compatBaseOffset)
+					end
+					if section.Update then pcall(section.Update, section) end
+				end
+			end
+		end
+		if nativeTabUpdate then pcall(nativeTabUpdate, self) end
+
+		-- Record the native (unscrolled) positions and the full content height.
+		local items, content = {}, 0
+		for sn = 1, 2 do
+			for _, section in ipairs(self.sides[sn] or {}) do
+				if not section.rna then
+					local base = sectionBase(section)
+					if base then
+						local off = base.GetOffset and drawingOffset(base) or nil
+						local ox = off and off.X or (sn == 1 and 6 or maxW / 2 + 6)
+						local oy = off and off.Y or 12
+						section._compatBaseOffset = Vector2.new(ox, oy)
+						local _, h = drawingSize(base)
+						h = math.max(24, h, tonumber(section.scale) or 0)
+						items[#items + 1] = { section = section, x = ox, y = oy, h = h, sn = sn }
+						if oy + h > content then content = oy + h end
+					end
+				end
+			end
+		end
+		self._compatCanvas = items
+		self._compatOrder = items
 		self._compatContentHeight = content
-		self._compatMaxScroll = math.max(0, content - viewportHeight() + 12)
-		self._compatScroll = math.clamp(tonumber(self._compatScroll) or 0, 0, self._compatMaxScroll)
-		return self._compatCanvas
+		self._compatMaxScroll = math.max(0, content - maxH + 8)
+		self._compatScroll = math.clamp(tonumber(self._compatScroll) or 0, 0, self._compatMaxScroll or 0)
+		self._compatScrollable = true
+
+		for _, item in ipairs(items) do
+			local section, base = item.section, sectionBase(item.section)
+			local top = item.y - self._compatScroll
+			if base and base.SetOffset then
+				base.SetOffset(Vector2.new(item.x, top))
+			end
+			if visibleMenu then
+				if section.Show then pcall(section.Show, section) end
+			else
+				if section.Hide then pcall(section.Hide, section) end
+			end
+			applySectionClip(section, item, top, maxH, maxW, visibleMenu)
+		end
+		if self.UpdateColor then pcall(self.UpdateColor, self) end
+		return items
+	end
+
+	function tab:_compatBuildCanvas()
+		return self:_compatLayout()
 	end
 	function tab:_compatScrollToSection(name)
-		self:_compatBuildCanvas()
-		for _, item in ipairs(self._compatOrder or {}) do
-			if item.name == name then
-				self._compatScroll = math.clamp(item.y - 12, 0, self._compatMaxScroll or 0)
-				self:_compatApplyScroll(self._compatScroll)
+		local items = self:_compatLayout()
+		for _, item in ipairs(items) do
+			if item.section and item.section.name == name then
+				self:_compatApplyScroll(item.y - 12)
 				return true
 			end
 		end
 		return false
 	end
 	function tab:_compatApplyScroll(scroll)
-		self:_compatBuildCanvas()
-		self._compatScroll = math.clamp(tonumber(scroll) or self._compatScroll or 0, 0, self._compatMaxScroll or 0)
+		if scroll ~= nil then self._compatScroll = tonumber(scroll) or self._compatScroll or 0 end
 		self._compatScrollable = true
 		if self.Update then pcall(self.Update, self) end
 	end
-	local nativeTabUpdate = tab.Update
 	function tab.Update(self)
-		local canvas = self:_compatBuildCanvas()
-		local frame = currentFrame()
-		local maxH = viewportHeight()
-		local tabsW = viewportWidth()
-		local visibleMenu = self.on == true and frame and frame.Visible == true
-		for sn = 1, 2 do
-			for _, item in ipairs(canvas[sn] or {}) do
-				local section = item.section
-				local top = item.y - (self._compatScroll or 0)
-				local base = section.instances and section.instances[1]
-				if base and base.SetOffset then
-					base.SetOffset(Vector2.new(sn == 1 and 6 or tabsW / 2 + 6, top))
-				end
-				if not visibleMenu or top > maxH or top + item.h < 0 then
-					if section.Hide then pcall(section.Hide, section) end
-				else
-					if section.Show then pcall(section.Show, section) end
-					for ci, child in ipairs(section.instances or {}) do
-						local childTop = top
-						if ci > 1 and child.GetOffset then
-							local ok, off = pcall(child.GetOffset)
-							if ok and off then childTop = top + (tonumber(off.Y) or 0) end
-						end
-						local childH = tonumber(child.Size and child.Size.Y) or 0
-						if childTop > maxH + 8 or childTop + childH < -24 then
-							child.Visible = false
-						end
-					end
-				end
-			end
-		end
-		if self.UpdateColor then pcall(self.UpdateColor, self) end
+		return self:_compatLayout()
 	end
 	function tab.open_tab()
 		if nativeWindow and nativeWindow.SelectTab then
@@ -1384,7 +1481,15 @@ function library:window(info)
 		end
 	end)
 	captureMouseState()
+	local lastFrameVisible = frame.Visible
 	utility:Connect(game:GetService("RunService").Heartbeat, function()
+		-- Fade toggles the frame after its delayed transparency pass. Re-clip the
+		-- whole section tree on that edge; otherwise child drawings that are not
+		-- in fade_instances would remain painted over the game after hiding.
+		if frame.Visible ~= lastFrameVisible then
+			lastFrameVisible = frame.Visible
+			if nativeWindow._compatRebalance then pcall(nativeWindow._compatRebalance) end
+		end
 		if not library.menu_visible or not frame.Visible then return end
 		if flags["ui_free_mouse"] == false then
 			if mouseWasFreed then setMouseGame() end
