@@ -2,18 +2,16 @@
 -- // base: demo_universal_esp  |  UI: noname.hack (Drawing library)
 -- //
 -- // What this is:
--- //   * Combat tab  -> pure psilent + weapon mods + kill aura + bullet
--- //                    manipulation (gun peek / packet no spread /
--- //                    trajectory arc)
+-- //   * Combat tab  -> embedded pure psilent + weapon mods + kill aura
 -- //   * Visuals tab -> full player ESP + working esp_preview + target viewer
 -- //                    (vertical crosshair-aware hotbar + armor rail)
 -- //   * World tab   -> world ESP + auto farm nodes
--- //   * Misc tab    -> speed/phase/spider/freecam + desync + overlay windows
+-- //   * Misc tab    -> speed/spider/freecam + overlay windows
 -- //   * Sounds tab  -> hitsounds (head/body/kill) on the server's HitMarker
 -- //
 -- // ESP features: corner/full box, filled box, gradient healthbar, name,
 -- //   health text, distance, held-item (tools/guns/anything), view angle,
--- //   tracers, chams. Optimised render loop (cached flag reads, hide-once,
+-- //   chams. Optimised render loop (cached flag reads, hide-once,
 -- //   pooled drawings, zero per-frame allocation).
 -- //
 -- // The player-ESP flag names (Enabled / Names / Name_Color / Boxes /
@@ -464,7 +462,6 @@ setDefaultFlag("sa_enabled", true)
 setDefaultFlag("sa_force_head", false)
 setDefaultFlag("sa_instant_hit", true)
 setDefaultFlag("sa_remote_jack", true)
-setDefaultFlag("sa_bow_enabled", true)
 setDefaultFlag("sa_target_npc", true)
 setDefaultFlag("sa_snapline_npc", true)
 setDefaultFlag("tb_npc", true)
@@ -510,9 +507,6 @@ setDefaultFlag("esp_cham_vis_color", Color3.fromRGB(0, 255, 0))
 setDefaultFlag("esp_cham_invis_color", Color3.fromRGB(255, 0, 0))
 setDefaultFlag("esp_font_size", 13)
 setDefaultFlag("esp_font", "Plex")
-setDefaultFlag("esp_tracers", false)
-setDefaultFlag("esp_tracer_color", Color3.fromRGB(255, 255, 255))
-setDefaultFlag("esp_tracer_origin", "Bottom")
 setDefaultFlag("sf_hands_enabled", false)
 setDefaultFlag("sf_gun_enabled", false)
 setDefaultFlag("sf_protect_muzzle", true)
@@ -530,26 +524,6 @@ setDefaultFlag("sf_gun_use_preset", true)
 setDefaultFlag("sf_gun_color", Color3.fromRGB(0, 255, 255))
 setDefaultFlag("sf_gun_transparency", 0)
 setDefaultFlag("sf_gun_reflectance", 2)
-setDefaultFlag("sf_tracers_enabled", false)
-setDefaultFlag("sf_tracer_use_preset", true)
-setDefaultFlag("sf_tracer_preset", "Cyan")
-setDefaultFlag("sf_tracer_color", Color3.fromRGB(0, 255, 255))
-setDefaultFlag("sf_tracer_impact_enabled", true)
-setDefaultFlag("sf_tracer_impact_color", Color3.fromRGB(0, 255, 255))
-setDefaultFlag("sf_tracer_impact_size", 0.3)
-setDefaultFlag("sf_tracer_width", 0.2)
-setDefaultFlag("sf_tracer_lifetime", 0.25)
-setDefaultFlag("sf_tracer_segments", 1)
-setDefaultFlag("sf_tracer_glow", 5)
-setDefaultFlag("sf_tracer_light_influence", 0)
-setDefaultFlag("sf_tracer_face_camera", true)
-setDefaultFlag("sf_tracer_max", 24)
-setDefaultFlag("sf_tracer_range", 1000)
-setDefaultFlag("sf_tracer_use_muzzle", true)
-setDefaultFlag("sf_tracer_follow_sa", true)
-setDefaultFlag("sf_tracer_raycast", true)
-setDefaultFlag("sf_tracer_include_bow", true)
-setDefaultFlag("sf_tracer_double_gun", true)
 setDefaultFlag("skin_enabled", true)
 setDefaultFlag("skin_apply_mode", "Selected Gun")
 setDefaultFlag("skin_weapon", "Assault Rifle")
@@ -566,16 +540,9 @@ setDefaultFlag("skin_fallback_color", Color3.fromRGB(255, 180, 80))
 setDefaultFlag("skin_fallback_transparency", 0)
 setDefaultFlag("skin_fallback_reflectance", 2)
 setDefaultFlag("skin_debug", false)
-setDefaultFlag("ds_ox", 0)
-setDefaultFlag("ds_oy", -2.4)
-setDefaultFlag("ds_oz", 0)
-setDefaultFlag("ds_rx", 90)
-setDefaultFlag("ds_ry", 0)
-setDefaultFlag("ds_rz", 0)
 setDefaultFlag("tb_max_dist", 0)
 setDefaultFlag("rb_enabled", false)
 setDefaultFlag("rb_enabled_quick", false)
-setDefaultFlag("rb_fov_radius", 10000)
 setDefaultFlag("rb_max_dist", 0)
 setDefaultFlag("esp_preview_2d", true)
 setDefaultFlag("esp_self_preview_3d", true)
@@ -585,9 +552,6 @@ setDefaultFlag("cfg_selected", "Default")
 setDefaultFlag("cfg_auto_load", false)
 setDefaultFlag("ui_modal_guard", true)
 setDefaultFlag("ui_menu_key", { active = false, mode = "toggle", key = "Insert" })
-setDefaultFlag("ui_jump_combat", "Silent Aim")
-setDefaultFlag("ui_jump_visuals", "Player ESP")
-setDefaultFlag("ui_jump_settings", "Configs")
 setDefaultFlag("ui_accent", Color3.fromRGB(155, 105, 230))
 setDefaultFlag("ui_background", Color3.fromRGB(20, 20, 27))
 setDefaultFlag("ui_outline", Color3.fromRGB(58, 58, 72))
@@ -1080,72 +1044,105 @@ local function attachTab(tab)
 		return column
 	end
 
-	function tab:_compatApplyScroll(scroll)
-		if not nativeWindow or not self._compatScrollable then return end
-		local frame = nativeWindow.frame
-		local maxH = math.max(120, (frame and frame.Size and frame.Size.Y or 620) - 55 - 24)
-		local cols = self._compatColumns or { {}, {} }
-		self._compatColumns = cols
-		local longest = math.max(#(cols[1] or {}), #(cols[2] or {}))
-		local maxScroll = math.max(0, longest - 1)
-		self._compatScroll = math.clamp(tonumber(scroll) or self._compatScroll or 0, 0, maxScroll)
-		local visible = { {}, {} }
-		for sn = 1, 2 do
-			local list = cols[sn] or {}
-			local count = #list
-			if count > 0 then
-				local start = math.max(1, math.min(self._compatScroll + 1, count))
-				local used = 0
-				for offset = 0, count - 1 do
-					local idx = ((start - 1 + offset) % count) + 1
-					local item = list[idx]
-					if not item or not item.section then break end
-					local h = tonumber(item.h) or 40
-					if #visible[sn] > 0 and used + h > maxH then break end
-					visible[sn][#visible[sn] + 1] = item.section
-					used = used + h
-					item.section.side = sn == 1 and "left" or "right"
-				end
-			end
-		end
-		self.sides[1], self.sides[2] = visible[1], visible[2]
-		if self.Update then pcall(self.Update, self) end
+	-- Every authored section lives on one continuous two-column canvas.
+	-- Mouse wheel moves both columns; no section is omitted or hidden behind
+	-- No jump or paging control is used.
+	local function currentFrame()
+		return nativeWindow and nativeWindow.frame
+	end
+	local function viewportHeight()
+		local frame = currentFrame()
+		local h = frame and frame.Size and tonumber(frame.Size.Y) or 620
+		return math.max(120, h - 55 - 24)
+	end
+	local function viewportWidth()
+		local frame = currentFrame()
+		return math.max(240, (frame and frame.Size and tonumber(frame.Size.X) or 860) - 24)
+	end
+	function tab:_compatBuildCanvas()
+		local left, right = {}, {}
+		self._compatCanvas = { {}, {} }
+		self._compatOrder = {}
 		for _, section in ipairs(self.sections or {}) do
-			if section.Hide then pcall(section.Hide, section) end
-		end
-		if self.on and frame and frame.Visible then
-			for sn = 1, 2 do
-				for _, section in ipairs(self.sides[sn]) do
-					if section.Show then pcall(section.Show, section) end
-				end
+			if not section.rna then
+				if section.Update then pcall(section.Update, section) end
+				local idx = tonumber(section._compatColumnIndex) or 1
+				local sn = (idx % 2 == 0) and 2 or 1
+				section.side = sn == 1 and "left" or "right"
+				local list = sn == 1 and left or right
+				list[#list + 1] = section
+				local base = section.instances and section.instances[1]
+				local h = math.max(24, tonumber(base and base.Size and base.Size.Y) or tonumber(section.scale) or 40)
+				local canvas = self._compatCanvas[sn]
+				local y = 12 + (canvas[#canvas] and (canvas[#canvas].y + canvas[#canvas].h) or 0)
+				local item = { section = section, y = y, h = h, sn = sn, name = section.name }
+				canvas[#canvas + 1] = item
+				self._compatOrder[#self._compatOrder + 1] = item
 			end
 		end
+		self.sides[1], self.sides[2] = left, right
+		local leftLast = self._compatCanvas[1][#self._compatCanvas[1]]
+		local rightLast = self._compatCanvas[2][#self._compatCanvas[2]]
+		local content = math.max(
+			leftLast and (leftLast.y + leftLast.h) or 0,
+			rightLast and (rightLast.y + rightLast.h) or 0)
+		self._compatContentHeight = content
+		self._compatMaxScroll = math.max(0, content - viewportHeight() + 12)
+		self._compatScroll = math.clamp(tonumber(self._compatScroll) or 0, 0, self._compatMaxScroll)
+		return self._compatCanvas
 	end
-
-	function tab:_compatFocusSection(name)
-		local cols = self._compatColumns or { {}, {} }
-		local longest = math.max(#(cols[1] or {}), #(cols[2] or {}))
-		local target
+	function tab:_compatScrollToSection(name)
+		self:_compatBuildCanvas()
+		for _, item in ipairs(self._compatOrder or {}) do
+			if item.name == name then
+				self._compatScroll = math.clamp(item.y - 12, 0, self._compatMaxScroll or 0)
+				self:_compatApplyScroll(self._compatScroll)
+				return true
+			end
+		end
+		return false
+	end
+	function tab:_compatApplyScroll(scroll)
+		self:_compatBuildCanvas()
+		self._compatScroll = math.clamp(tonumber(scroll) or self._compatScroll or 0, 0, self._compatMaxScroll or 0)
+		self._compatScrollable = true
+		if self.Update then pcall(self.Update, self) end
+	end
+	local nativeTabUpdate = tab.Update
+	function tab.Update(self)
+		local canvas = self:_compatBuildCanvas()
+		local frame = currentFrame()
+		local maxH = viewportHeight()
+		local tabsW = viewportWidth()
+		local visibleMenu = self.on == true and frame and frame.Visible == true
 		for sn = 1, 2 do
-			for idx, item in ipairs(cols[sn] or {}) do
-				if item.section and item.section.name == name then
-					target = math.min(target or idx, idx)
+			for _, item in ipairs(canvas[sn] or {}) do
+				local section = item.section
+				local top = item.y - (self._compatScroll or 0)
+				local base = section.instances and section.instances[1]
+				if base and base.SetOffset then
+					base.SetOffset(Vector2.new(sn == 1 and 6 or tabsW / 2 + 6, top))
+				end
+				if not visibleMenu or top > maxH or top + item.h < 0 then
+					if section.Hide then pcall(section.Hide, section) end
+				else
+					if section.Show then pcall(section.Show, section) end
+					for ci, child in ipairs(section.instances or {}) do
+						local childTop = top
+						if ci > 1 and child.GetOffset then
+							local ok, off = pcall(child.GetOffset)
+							if ok and off then childTop = top + (tonumber(off.Y) or 0) end
+						end
+						local childH = tonumber(child.Size and child.Size.Y) or 0
+						if childTop > maxH + 8 or childTop + childH < -24 then
+							child.Visible = false
+						end
+					end
 				end
 			end
 		end
-		if not target then return false end
-		self._compatScroll = math.clamp(target - 1, 0, math.max(0, longest - 1))
-		self:_compatApplyScroll(self._compatScroll)
-		return true
+		if self.UpdateColor then pcall(self.UpdateColor, self) end
 	end
-
-	local nativeShow = tab.Show
-	function tab.Show(self, ...)
-		local result = nativeShow(self, ...)
-		if self._compatApplyScroll then self:_compatApplyScroll(self._compatScroll or 0) end
-		return result
-	end
-
 	function tab.open_tab()
 		if nativeWindow and nativeWindow.SelectTab then
 			pcall(nativeWindow.SelectTab, nativeWindow, tab.name)
@@ -1218,52 +1215,9 @@ end
 
 local function rebalanceAllTabs()
 	if not (nativeWindow and nativeWindow.tabs) then return end
-	local maxH = availableColumnHeight()
 	for _, tab in ipairs(nativeWindow.tabs) do
-		-- Tabs built with the normal two columns keep their authored layout.
-		-- Only tabs that called column() more than twice (Misc, World, Exploit)
-		-- get height-aware packing + wheel scrolling.
-		tab._compatScrollable = (tonumber(tab._compatColumnCount) or 0) > 2
-		if tab._compatScrollable then
-			local groups, byColumn = {}, {}
-			for index, section in ipairs(tab.sections or {}) do
-				if not section.rna then
-					local item = { i = index, h = sectionHeight(section), section = section }
-					local key = section._compatColumnIndex or 0
-					local group = byColumn[key]
-					if not group then
-						group = { i = index, h = 0, items = {} }
-						byColumn[key] = group
-						groups[#groups + 1] = group
-					end
-					group.h = group.h + item.h
-					group.items[#group.items + 1] = item
-				end
-			end
-			table.sort(groups, function(a, b) return a.i < b.i end)
-			-- Pack whole authored columns, never splitting two adjacent
-			-- sections such as Hand Chams / Gun Chams into different sides.
-			local columns, heights = { {}, {} }, { 0, 0 }
-			for _, group in ipairs(groups) do
-				local sn = heights[1] <= heights[2] and 1 or 2
-				local other = sn == 1 and 2 or 1
-				if heights[sn] + group.h > maxH and heights[other] + group.h <= maxH then
-					sn = other
-				end
-				for _, item in ipairs(group.items) do
-					columns[sn][#columns[sn] + 1] = item
-					heights[sn] = heights[sn] + item.h
-					item.section.side = sn == 1 and "left" or "right"
-				end
-			end
-			for sn = 1, 2 do
-				table.sort(columns[sn], function(a, b) return a.i < b.i end)
-			end
-			tab._compatColumns = columns
-			if tab._compatApplyScroll then tab:_compatApplyScroll(tab._compatScroll or 0) end
-		elseif tab.Update then
-			pcall(tab.Update, tab)
-		end
+		tab._compatScrollable = true
+		if tab._compatApplyScroll then pcall(tab._compatApplyScroll, tab, tab._compatScroll or 0) end
 		if not tab.on and tab.Hide then pcall(tab.Hide, tab) end
 	end
 	if nativeWindow.Update then pcall(nativeWindow.Update, nativeWindow) end
@@ -1272,7 +1226,7 @@ local function rebalanceAllTabs()
 	end
 end
 
-function library:focus_section(tabName, sectionName)
+function library:scroll_to_section(tabName, sectionName)
 	if not nativeWindow then return false end
 	local target
 	for _, tab in ipairs(nativeWindow.tabs or {}) do
@@ -1280,7 +1234,9 @@ function library:focus_section(tabName, sectionName)
 	end
 	if not target then return false end
 	if nativeWindow.SelectTab then pcall(nativeWindow.SelectTab, nativeWindow, tabName) end
-	if target._compatFocusSection then return target:_compatFocusSection(sectionName) end
+	if target._compatScrollToSection and type(sectionName) == "string" then
+		return target:_compatScrollToSection(sectionName)
+	end
 	return true
 end
 
@@ -1459,16 +1415,17 @@ function library:window(info)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 then resizing = false end
 	end)
 
-	-- Long tabs (Misc/Exploit) are scrollable instead of drawing below the frame.
+	-- One ordinary mouse wheel over the window scrolls every section of the
+	-- active tab. No jump controls, section paging or cyclic wrapping.
 	utility:Connect(uis.InputChanged, function(input)
 		if not frame.Visible or input.UserInputType ~= Enum.UserInputType.MouseWheel then return end
 		if not utility:MouseOverDrawing(frame) then return end
 		local tab = nativeWindow.sshit
-		if not (tab and tab._compatScrollable and tab._compatApplyScroll) then return end
+		if not (tab and tab._compatApplyScroll) then return end
 		local delta = 0
 		pcall(function() delta = input.Position.Z or 0 end)
 		local step = delta > 0 and -1 or (delta < 0 and 1 or 0)
-		if step ~= 0 then tab:_compatApplyScroll((tab._compatScroll or 0) + step) end
+		if step ~= 0 then tab:_compatApplyScroll((tab._compatScroll or 0) + step * 72) end
 	end)
 
 	-- noname.hack does not bind a menu key by itself. Keep Insert / RightShift
@@ -1888,11 +1845,9 @@ local WORLD_SEC_COLOR = {
 -- ================================================================
 -- // OVX SHARED (cross-module state + KI v2.1 helpers)
 -- //   OVX.saTarget            <- Silent Aim publishes its lock every scan
--- //   OVX.saRedirectAt        <- stamped when SA rewrites a Fire direction
 -- //   OVX.saRedirectAt        <- stamped when Silent Aim rewrites a Fire
--- //   OVX.arrowSpeed/-Gravity <- captured live from BowRemotes.Flight
 -- ================================================================
-local OVX = { saTarget = nil, saRedirectAt = nil, arrowSpeed = nil, arrowGravity = 18 }
+local OVX = { saTarget = nil, saRedirectAt = nil }
 -- ================================================================
 -- // RAGEBOT STATE
 -- //   The master toggle is reversible. While it is on, every Silent Aim
@@ -1912,7 +1867,6 @@ do
 		sa_instant_hit = true,
 		sa_remote_jack = true,
 		sa_bone = "Head",
-		sa_bow_enabled = false,
 		wm_norecoil = true,
 		wm_nospread = true,
 		wm_nosway = true,
@@ -1920,7 +1874,6 @@ do
 		wm_autofire = true,
 		wm_rapidfire = true,
 		wm_rpm = 1200,
-		wm_instantcharge = true,
 		wm_fastcycle = true,
 		wm_range = true,
 		tb_enabled = true,
@@ -1973,11 +1926,12 @@ do
 		return on
 	end
 
+	registerFlagSetter("rb_enabled", function(value)
+		return OVX.ragebotApply(value == true)
+	end)
+
 	function OVX.saFov()
-		if flags["rb_enabled"] == true then
-			local radius = tonumber(flags["rb_fov_radius"]) or 10000
-			return math.max(1000, math.min(50000, radius))
-		end
+		if flags["rb_enabled"] == true then return math.huge end
 		return tonumber(flags["sa_fov"]) or 120
 	end
 
@@ -1986,7 +1940,7 @@ do
 		local ok, score = pcall(function()
 			local sp, on = camera:WorldToViewportPoint(part.Position)
 			local inFront = on and sp.Z > 0
-			local screenD = inFront and (v2new(sp.X, sp.Y) - crosshair).Magnitude or fov
+			local screenD = inFront and (v2new(sp.X, sp.Y) - crosshair).Magnitude or 0
 			if inFront and screenD > fov then return nil end
 			local worldD = (part.Position - camera.CFrame.Position).Magnitude
 			return worldD + screenD / 100000
@@ -2160,8 +2114,8 @@ end
 
 -- ================================================================
 -- // SHARED VIEWMODEL CACHE + PROPERTY RESTORE
--- //   One shallow camera-side cache powers hand chams, gun chams,
--- //   tracers and the skin changer. Original properties are stored
+-- //   One shallow camera-side cache powers hand chams, gun chams
+-- //   and the skin changer. Original properties are stored
 -- //   once so toggling or unloading never leaves a modified part.
 -- ================================================================
 do
@@ -2214,7 +2168,7 @@ do
 	end
 
 	local HAND_WORDS = { "hand", "arm", "sleeve", "glove", "wrist", "forearm" }
-	local PROTECTED_WORDS = { "muzzle", "flash", "smoke", "particle", "beam", "tracer", "bullet", "light" }
+	local PROTECTED_WORDS = { "muzzle", "flash", "smoke", "particle", "beam", "bullet", "light" }
 	local function nameMatches(part, words)
 		local obj, depth = part, 0
 		while obj and depth < 5 do
@@ -2391,15 +2345,14 @@ do
 end
 
 -- ================================================================
--- // SCI-FI V2: HAND / GUN CHAMS + MUZZLE-TO-IMPACT BULLET TRACERS
--- //   No second menu. Every material, preset, tracer and protection
+-- // SCI-FI V2: HAND / GUN CHAMS
+-- //   No second menu. Every material, preset and protection
 -- //   switch is driven by the Vault UI flags below.
 -- ================================================================
 do
 	local env = getgenv()
 	local previousSciFi = env.SciFiChams
 	local previousSciFiUnload = env.SciFiChamsUnload
-	local previousFireTest = env.fireTestTracer
 	if type(previousSciFiUnload) == "function" then pcall(previousSciFiUnload) end
 
 	local MATERIALS = {
@@ -2436,236 +2389,7 @@ do
 		end
 		return resolveColor(prefix .. "_color", PRESETS.Cyan)
 	end
-	local function tracerColor()
-		if flags["sf_tracer_use_preset"] ~= false then
-			return presetColor(flags["sf_tracer_preset"], PRESETS.Cyan)
-		end
-		return resolveColor("sf_tracer_color", PRESETS.Cyan)
-	end
-	local function impactColor()
-		return resolveColor("sf_tracer_impact_color", tracerColor())
-	end
-
-	local tracerRecords = {}
 	local sciFiAppliedParts = {}
-	local function destroyRecord(record)
-		if not record or record.destroyed then return end
-		record.destroyed = true
-		for _, instance in ipairs(record.instances or {}) do
-			pcall(function() instance:Destroy() end)
-		end
-	end
-	local function trimTracers()
-		local maxCount = clamp(tonumber(flags["sf_tracer_max"]) or 24, 1, 80)
-		while #tracerRecords > maxCount do
-			local old = table.remove(tracerRecords, 1)
-			destroyRecord(old)
-		end
-	end
-	local function trackRecord(record)
-		tracerRecords[#tracerRecords + 1] = record
-		trimTracers()
-	end
-	function OVX.clearSciFiTracers()
-		for _, record in ipairs(tracerRecords) do destroyRecord(record) end
-		table.clear(tracerRecords)
-	end
-
-	local function tracerParent()
-		return Workspace.Terrain or Workspace
-	end
-	local function tracerNumber(flag, fallback, low, high)
-		return clamp(tonumber(flags[flag]) or fallback, low, high)
-	end
-	local function create3DTracer(startPos, endPos, color)
-		if typeof(startPos) ~= "Vector3" or typeof(endPos) ~= "Vector3" then return end
-		local parent = tracerParent()
-		local a0, a1, beam = Instance.new("Attachment"), Instance.new("Attachment"), Instance.new("Beam")
-		local width = tracerNumber("sf_tracer_width", 0.2, 0.02, 3)
-		local segments = math.floor(tracerNumber("sf_tracer_segments", 1, 1, 20) + 0.5)
-		local lifetime = tracerNumber("sf_tracer_lifetime", 0.25, 0.03, 3)
-		pcall(function()
-			a0.Parent = parent
-			a1.Parent = parent
-			a0.WorldPosition = startPos
-			a1.WorldPosition = endPos
-			beam.Parent = parent
-			beam.Attachment0 = a0
-			beam.Attachment1 = a1
-			beam.Width0 = width
-			beam.Width1 = width
-			beam.Segments = segments
-			beam.LightEmission = tracerNumber("sf_tracer_glow", 5, 0, 10) / 10
-			beam.LightInfluence = tracerNumber("sf_tracer_light_influence", 0, 0, 10) / 10
-			beam.FaceCamera = flags["sf_tracer_face_camera"] ~= false
-			beam.Enabled = true
-		end)
-		pcall(function()
-			beam.Color = ColorSequence.new({
-				ColorSequenceKeypoint.new(0, color),
-				ColorSequenceKeypoint.new(1, color),
-			})
-		end)
-		local record = { instances = { a0, a1, beam } }
-		trackRecord(record)
-		if type(task) == "table" and type(task.delay) == "function" then
-			task.delay(lifetime, function() destroyRecord(record) end)
-		end
-	end
-	local function createImpact(position, color)
-		if flags["sf_tracer_impact_enabled"] == false or typeof(position) ~= "Vector3" then return end
-		local size = tracerNumber("sf_tracer_impact_size", 0.3, 0.05, 3)
-		local lifetime = tracerNumber("sf_tracer_lifetime", 0.25, 0.03, 3)
-		local part = Instance.new("Part")
-		pcall(function()
-			part.Name = "OVXSciFiImpact"
-			part.Size = v3new(size, size, size)
-			part.Shape = Enum.PartType.Ball
-			part.Material = Enum.Material.Neon
-			part.Color = color
-			part.Transparency = 0.2
-			part.CanCollide = false
-			part.Anchored = true
-			part.CFrame = CFrame.new(position)
-			part.Parent = tracerParent()
-		end)
-		local record = { instances = { part } }
-		trackRecord(record)
-		if type(task) == "table" and type(task.delay) == "function" then
-			task.delay(lifetime, function() destroyRecord(record) end)
-		end
-	end
-	function OVX.fireTracer(startPos, endPos, color)
-		color = color or tracerColor()
-		create3DTracer(startPos, endPos, color)
-		createImpact(endPos, impactColor())
-	end
-
-	local function findMuzzles()
-		local out = {}
-		for _, part in ipairs(OVX.viewModelParts or {}) do
-			local name = OVX.lowerName(part.Name)
-			if string.find(name, "muzzle", 1, true) or string.find(name, "flash", 1, true) then
-				pcall(function() out[#out + 1] = part.Position end)
-			end
-		end
-		if #out == 0 then
-			local cam = Workspace.CurrentCamera
-			if cam then
-				pcall(function() out[1] = cam.CFrame.Position + cam.CFrame.LookVector * 2 end)
-			end
-		end
-		if #out == 0 then out[1] = v3new(0, 0, 0) end
-		return out
-	end
-	local function raycastImpact(start, direction, range)
-		if flags["sf_tracer_follow_sa"] ~= false then
-			local target = OVX.saTarget
-			if target then
-				if typeof(target.point) == "Vector3" then return target.point end
-				if target.part and target.part.Parent then
-					local point
-					pcall(function() point = target.part.Position end)
-					if typeof(point) == "Vector3" then return point end
-				end
-			end
-		end
-		if flags["sf_tracer_raycast"] == false then return start + direction * range end
-		local params = RaycastParams.new()
-		pcall(function()
-			params.FilterType = Enum.RaycastFilterType.Exclude
-			local filter = { lp.Character }
-			for _, root in ipairs(OVX.viewModels or {}) do filter[#filter + 1] = root end
-			params.FilterDescendantsInstances = filter
-		end)
-		local hit
-		pcall(function() hit = Workspace:Raycast(start, direction * range, params) end)
-		if hit and typeof(hit.Position) == "Vector3" then return hit.Position end
-		return start + direction * range
-	end
-	local function shotFromArgs(...)
-		local args = { ... }
-		local claimOrigin
-		for _, value in ipairs(args) do
-			if type(value) == "table" then
-				pcall(function()
-					if typeof(value.o) == "Vector3" then claimOrigin = value.o end
-					if typeof(value.origin) == "Vector3" then claimOrigin = value.origin end
-				end)
-			end
-		end
-		local v1 = typeof(args[1]) == "Vector3" and args[1] or nil
-		local v2 = typeof(args[2]) == "Vector3" and args[2] or nil
-		local start, direction
-		if v1 and v2 then
-			local m1, m2 = v1.Magnitude, v2.Magnitude
-			if m2 > 0.001 and math.abs(m2 - 1) < 0.25 then
-				start, direction = v1, v2
-			elseif claimOrigin and m1 > 0.001 and math.abs(m1 - 1) < 0.25 then
-				start, direction = claimOrigin, v1
-			elseif m1 > 0.001 then
-				start, direction = v1, v2.Unit
-			end
-		elseif v1 then
-			if claimOrigin then
-				start = claimOrigin
-				direction = v1.Magnitude > 0.001 and v1.Unit or nil
-			else
-				start = v1
-			end
-		end
-		local cam = Workspace.CurrentCamera
-		if typeof(start) ~= "Vector3" then
-			start = cam and (cam.CFrame.Position + cam.CFrame.LookVector * 2) or v3new(0, 0, 0)
-		end
-		if typeof(direction) ~= "Vector3" or direction.Magnitude < 0.001 then
-			direction = cam and cam.CFrame.LookVector or v3new(0, 0, -1)
-		end
-		if math.abs(direction.Magnitude - 1) > 0.25 then direction = direction.Unit end
-		return start, direction
-	end
-	local function isShotRemote(remote)
-		if remote == nil then return true end
-		local name, path = "", ""
-		pcall(function() name = OVX.lowerName(remote.Name) end)
-		pcall(function() path = OVX.lowerName(remote:GetFullName()) end)
-		return string.find(name, "fire", 1, true) or string.find(name, "launch", 1, true)
-			or string.find(path, "fire", 1, true) or string.find(path, "bowremotes", 1, true)
-	end
-	function OVX.sciFiTracer(remote, ...)
-		if flags["sf_tracers_enabled"] == false or not isShotRemote(remote) then return end
-		if flags["sf_tracer_include_bow"] == false then
-			local name, path = "", ""
-			pcall(function() name = OVX.lowerName(remote and remote.Name) end)
-			pcall(function() path = OVX.lowerName(remote and remote:GetFullName()) end)
-			if string.find(name, "bow", 1, true) or string.find(path, "bow", 1, true) then return end
-		end
-		local start, direction = shotFromArgs(...)
-		local muzzles = findMuzzles()
-		if flags["sf_tracer_use_muzzle"] ~= false then start = muzzles[1] or start end
-		local range = clamp(tonumber(flags["sf_tracer_range"]) or 1000, 50, 5000)
-		local finish = raycastImpact(start, direction, range)
-		local color = tracerColor()
-		OVX.fireTracer(start, finish, color)
-		if flags["sf_tracer_double_gun"] ~= false and #muzzles > 1 then
-			OVX.fireTracer(muzzles[2], finish, color)
-		end
-	end
-	function OVX.fireTestTracer()
-		local muzzles = findMuzzles()
-		local cam = Workspace.CurrentCamera
-		local start = muzzles[1] or (cam and (cam.CFrame.Position + cam.CFrame.LookVector * 2) or v3new())
-		local direction = cam and cam.CFrame.LookVector or v3new(0, 0, -1)
-		local range = clamp(tonumber(flags["sf_tracer_range"]) or 1000, 50, 5000)
-		local finish = raycastImpact(start, direction, range)
-		local color = tracerColor()
-		OVX.fireTracer(start, finish, color)
-		if flags["sf_tracer_double_gun"] ~= false and #muzzles > 1 then
-			OVX.fireTracer(muzzles[2], finish, color)
-		end
-		return true
-	end
-
 	local function applyPart(part)
 		local ok, isPart = pcall(function() return part:IsA("BasePart") end)
 		if not ok or not isPart then return end
@@ -2741,22 +2465,18 @@ do
 	function OVX.sciFiUnload()
 		if sciFiUnloaded then return end
 		sciFiUnloaded = true
-		OVX.clearSciFiTracers()
 		pcall(OVX.sciFiRestore, false)
 		if env.SciFiChams == sciFiObject then env.SciFiChams = previousSciFi or nil end
 		if env.SciFiChamsUnload == OVX.sciFiUnload then env.SciFiChamsUnload = previousSciFiUnload or nil end
-		if env.fireTestTracer == OVX.fireTestTracer then env.fireTestTracer = previousFireTest or nil end
 		OVX.sciFiUnload = nil
 	end
 	sciFiObject = {
 		Settings = flags, Config = flags, Materials = MATERIALS, Presets = PRESETS,
 		PresetNames = PRESET_NAMES, Apply = OVX.sciFiApply, Restore = OVX.sciFiRestore,
-		FireTestTracer = OVX.fireTestTracer, fireTestTracer = OVX.fireTestTracer,
-		ClearTracers = OVX.clearSciFiTracers, Unload = OVX.sciFiUnload,
+		Unload = OVX.sciFiUnload,
 	}
 	env.SciFiChams = sciFiObject
 	env.SciFiChamsUnload = OVX.sciFiUnload
-	env.fireTestTracer = OVX.fireTestTracer
 	bind({ Disconnect = function() if OVX.sciFiUnload then pcall(OVX.sciFiUnload) end end })
 end
 
@@ -3292,7 +3012,6 @@ do
 			fillTransparency = 0.4, outlineTransparency = 0,
 			visColor = c3(0,255,0), invisColor = c3(255,0,0),
 		},
-		tracer = { enabled = false, color = c3(255,255,255), origin = "Bottom" },
 	}
 	local function defaultIsEnemy(player)
 		if not getFlagBool("esp_team_check", false) then return true end
@@ -3347,10 +3066,6 @@ do
 		espSettings.chams.visColor = getFlagColor("esp_cham_vis_color", c3(0,255,0))
 		espSettings.chams.invisColor = getFlagColor("esp_cham_invis_color", c3(255,0,0))
 
-		espSettings.tracer.enabled = getFlagBool("esp_tracers", false)
-		espSettings.tracer.color = getFlagColor("esp_tracer_color", c3(255,255,255))
-		espSettings.tracer.origin = flags["esp_tracer_origin"] or "Bottom"
-
 	end
 
 	local gradientKey, gradientColors = "", {}
@@ -3398,7 +3113,6 @@ do
 			healthText = newDrawing("Text", { Size = 13, Font = 2, Center = true, Outline = true, Visible = false }),
 			infoText = newDrawing("Text", { Size = 13, Font = 2, Center = true, Outline = true, Visible = false }),
 			viewAngle = newDrawing("Line", { Thickness = 1, Visible = false }),
-			tracer = newDrawing("Line", { Thickness = 1, Visible = false }),
 			cham = newCham({ Enabled = false }),
 			_hidden = false, _fontSize = 13, _font = 2, _toolName = nil, _toolAt = 0,
 		}
@@ -3427,7 +3141,6 @@ do
 		entry.healthText.Visible = false
 		entry.infoText.Visible = false
 		entry.viewAngle.Visible = false
-		entry.tracer.Visible = false
 		entry.cham.Enabled = false
 		hideCorners(entry)
 		hideGradient(entry)
@@ -3437,7 +3150,7 @@ do
 		if not entry then return end
 		pool[player] = nil
 		if entry.charConn then pcall(function() entry.charConn:Disconnect() end) end
-		local singles = { "boxOutline", "box", "filledBox", "healthOutline", "name", "healthText", "infoText", "viewAngle", "tracer" }
+		local singles = { "boxOutline", "box", "filledBox", "healthOutline", "name", "healthText", "infoText", "viewAngle" }
 		for _, key in ipairs(singles) do pcall(function() entry[key]:Remove() end) end
 		for _, drawing in ipairs(entry.corners) do pcall(function() drawing:Remove() end) end
 		for _, drawing in ipairs(entry.healthGradient) do pcall(function() drawing:Remove() end) end
@@ -3531,7 +3244,6 @@ do
 							local sHealth, sHealthText = espSettings.healthBar, espSettings.healthText
 							local sName, sDist, sWeapon = espSettings.name, espSettings.distance, espSettings.weapon
 							local sView, sChams = espSettings.viewAngle, espSettings.chams
-							local sTracer = espSettings.tracer
 
 							if sChams.enabled then
 								entry.cham.Adornee = model
@@ -3688,16 +3400,6 @@ do
 								entry.viewAngle.Visible = false
 							end
 
-							if sTracer.enabled then
-								local fromY = sTracer.origin == "Top" and 0
-									or (sTracer.origin == "Center" and vpY / 2 or vpY)
-								entry.tracer.From = v2new(vpX / 2, fromY)
-								entry.tracer.To = v2new(center.X, center.Y)
-								entry.tracer.Color = sTracer.color
-								entry.tracer.Visible = true
-							else
-								entry.tracer.Visible = false
-							end
 						end
 					end
 				end
@@ -3923,14 +3625,10 @@ do
 	local FireRemote = FirearmsRemotes and FirearmsRemotes:WaitForChild("Fire", 10)
 	local HitRemote  = FirearmsRemotes and FirearmsRemotes:FindFirstChild("Hit")
 
-	-- Bow remotes (resolved lazily — may not exist until a bow loads)
-	local BowRemotes, BowFire, BowLaunch, BowHit
-	local arrowSpeed, arrowGravity, arrowDrag = nil, 18, 0
-
+	-- Remote buckets are resolved lazily; no projectile/arc solver is embedded.
 	local SA_NPC_FOLDERS = { "Sleepers", "Scientists", "Animals" }
 	local SA = {
-		fireRemotes = {}, hitRemotes = {}, bowRemotes = {},
-		flightRemote = nil, flightConn = nil, flightHookedRemote = nil,
+		fireRemotes = {}, hitRemotes = {},
 		pendingId = nil, pendingAt = 0,
 		npcList = {}, npcSet = {}, npcAt = 0,
 	}
@@ -3951,8 +3649,6 @@ do
 		end
 	end
 	local function scanNpcRoots()
-		-- O(1) top-level + two shallow levels. New models arrive through
-		-- DescendantAdded; no Workspace:GetDescendants() sweep is ever used.
 		for _, obj in ipairs(Workspace:GetChildren()) do
 			if obj:IsA("Model") then
 				addNpcModel(obj)
@@ -3985,63 +3681,21 @@ do
 		end
 		scanNpcRoots()
 	end
-
-	local function hookFlight()
-		if SA.flightHookedRemote == SA.flightRemote then return end
-		if SA.flightConn then pcall(SA.flightConn.Disconnect, SA.flightConn) end
-		SA.flightHookedRemote = SA.flightRemote
-		SA.flightConn = nil
-		if not SA.flightRemote then return end
-		SA.flightConn = bind(SA.flightRemote.OnClientEvent:Connect(function(...)
-			for _, v in ipairs({ ... }) do
-				if typeof(v) == "Vector3" and v.Magnitude > 20 then
-					arrowSpeed = v.Magnitude
-				elseif type(v) == "table" then
-					if type(v.speed) == "number" then arrowSpeed = v.speed end
-					if type(v.gravity) == "number" then arrowGravity = v.gravity end
-					if type(v.drag) == "number" then arrowDrag = v.drag end
-				end
-			end
-			OVX.arrowSpeed, OVX.arrowGravity, OVX.arrowDrag = arrowSpeed, arrowGravity, arrowDrag
-		end))
-	end
 	local function classifyRemote(desc)
 		if not (desc:IsA("RemoteEvent") or desc:IsA("UnreliableRemoteEvent")) then return end
 		local n = string.lower(desc.Name)
-		local path = ""
-		pcall(function() path = string.lower(desc:GetFullName()) end)
-		local isBow = string.find(n, "bow", 1, true)
-			or string.find(path, "bowremotes", 1, true)
-			or string.find(path, "bow", 1, true)
 		if n == "fire" or string.find(n, "fire", 1, true) then
-			if isBow then
-				SA.bowRemotes[desc] = true
-				SA.fireRemotes[desc] = nil
-			else
-				SA.fireRemotes[desc] = true
-			end
+			SA.fireRemotes[desc] = true
 		elseif n == "hit" or string.find(n, "hit", 1, true) or string.find(n, "damage", 1, true) then
 			SA.hitRemotes[desc] = true
-		elseif string.find(n, "launch", 1, true) and isBow then
-			SA.bowRemotes[desc] = true
-			SA.fireRemotes[desc] = nil
-		elseif n == "flight" then
-			SA.flightRemote = desc
-			hookFlight()
 		end
 	end
 	local function removeRemote(desc)
-		SA.fireRemotes[desc], SA.hitRemotes[desc], SA.bowRemotes[desc] = nil, nil, nil
-		if SA.flightRemote == desc then
-			SA.flightRemote = nil
-			hookFlight()
-		end
+		SA.fireRemotes[desc], SA.hitRemotes[desc] = nil, nil
 	end
 	local function registerRemoteBuckets()
 		table.clear(SA.fireRemotes)
 		table.clear(SA.hitRemotes)
-		table.clear(SA.bowRemotes)
-		SA.flightRemote = nil
 		SA.pendingId, SA.pendingAt = nil, 0
 		local containers = { RepStorage }
 		for _, obj in ipairs(Workspace:GetChildren()) do
@@ -4049,17 +3703,11 @@ do
 				containers[#containers + 1] = obj
 			end
 		end
-		-- One-time / on-demand bucket build; subsequent remotes are classified
-		-- incrementally by DescendantAdded, not by a periodic descendant sweep.
 		for _, root in ipairs(containers) do
 			for _, desc in ipairs(root:GetDescendants()) do classifyRemote(desc) end
 		end
 		if FireRemote then SA.fireRemotes[FireRemote] = true end
 		if HitRemote then SA.hitRemotes[HitRemote] = true end
-		if BowFire then SA.bowRemotes[BowFire] = true; SA.fireRemotes[BowFire] = nil end
-		if BowLaunch then SA.bowRemotes[BowLaunch] = true; SA.fireRemotes[BowLaunch] = nil end
-		if BowHit then SA.hitRemotes[BowHit] = true end
-		hookFlight()
 	end
 	function SA.rescan()
 		registerRemoteBuckets()
@@ -4080,111 +3728,6 @@ do
 	end))
 	SA.refreshNpcs(true)
 	registerRemoteBuckets()
-	local bowFlightHooked = false
-	local function refreshBowRemotes()
-		if not (BowFire and BowLaunch and BowHit) then
-			BowRemotes = RepStorage:FindFirstChild("BowRemotes")
-			BowFire   = BowRemotes and BowRemotes:FindFirstChild("Fire")
-			BowLaunch = BowRemotes and BowRemotes:FindFirstChild("Launch")
-			BowHit    = BowRemotes and BowRemotes:FindFirstChild("Hit")
-		end
-		-- capture live arrow speed/gravity from the Flight event (server-authoritative)
-		if BowRemotes and not bowFlightHooked then
-			local flight = BowRemotes:FindFirstChild("Flight")
-			if flight then
-				bowFlightHooked = true
-				bind(flight.OnClientEvent:Connect(function(...)
-					local args = { ... }
-					local rows = {}
-					if type(args[1]) == "table" and type(args[1][1]) == "table" then
-						-- batch: { {id, payload}, ... }
-						for _, row in ipairs(args[1]) do
-							if type(row) == "table" then rows[#rows + 1] = { id = row[1], data = row[2] } end
-						end
-					else
-						rows[#rows + 1] = { id = args[1], data = args[2] }
-						for i = 3, #args do
-							if type(args[i]) == "table" then rows[#rows + 1] = { data = args[i] } end
-						end
-					end
-					for _, row in ipairs(rows) do
-						local d = row.data
-						if type(d) == "table" then
-							local v2 = d.vel or d.v0 or d.velocity
-							if typeof(v2) == "Vector3" and v2.Magnitude > 1 then arrowSpeed = v2.Magnitude end
-							local g2 = d.gravity or d.g
-							if type(g2) == "number" and g2 > 0 then arrowGravity = g2 end
-							local k2 = d.drag or d.k
-							if type(k2) == "number" and k2 >= 0 then arrowDrag = k2 end
-							if typeof(row.id) == "number" and d.shooter == lp.UserId then
-								-- server-generated flight id: bow claims quote this, not a seed
-								OVX.bowLastFlight = {
-									id = row.id, pos = d.pos, vel = d.vel, t0 = d.t0,
-									gravity = d.gravity or d.g, drag = d.drag or d.k
-								}
-							end
-						end
-					end
-					OVX.arrowSpeed, OVX.arrowGravity, OVX.arrowDrag = arrowSpeed, arrowGravity, arrowDrag
-				end))
-			end
-		end
-	end
-	refreshBowRemotes()
-
-	-- Low-arc ballistic solve: returns unit dir + flight time so a projectile
-	-- (speed s, gravity g) fired from eye hits target. nil if out of range.
-	local function solveArc(eye, target, s, g)
-		local disp = target - eye
-		local flat = v3new(disp.X, 0, disp.Z)
-		local dh = flat.Magnitude
-		if dh < 1e-3 then return (disp.Magnitude > 1e-3 and disp.Unit) or nil, nil end
-		local dy = disp.Y
-		local s2 = s * s
-		local root = s2 * s2 - g * (g * dh * dh + 2 * dy * s2)
-		if root < 0 then return nil, nil end
-		local angle = math.atan((s2 - math.sqrt(root)) / (g * dh))
-		local dir = (flat.Unit * math.cos(angle) + v3new(0, 1, 0) * math.sin(angle)).Unit
-		local flightTime = dh / (s * math.cos(angle))
-		return dir, flightTime
-	end
-
-
-	-- Rolling velocity sampler: 4-sample average of HRP world position deltas.
-	-- Returns smoothed velocity Vector3, or zero if not enough samples yet.
-	local _velBuf = {}   -- keyed by player UserId: { samples = {}, last = pos }
-	local function sampleVelocity(player)
-		local char = player and player.Character
-		local hrp  = char and char:FindFirstChild("HumanoidRootPart")
-		if not hrp then return v3new(0, 0, 0) end
-		local uid = player.UserId
-		if not _velBuf[uid] then _velBuf[uid] = { samples = {}, lastPos = hrp.Position, lastT = os.clock() } end
-		local buf = _velBuf[uid]
-		local now = os.clock()
-		local dt  = now - buf.lastT
-		if dt > 0.005 then
-			local vel = (hrp.Position - buf.lastPos) / dt
-			table.insert(buf.samples, v3new(vel.X, vel.Y, vel.Z))
-			if #buf.samples > 4 then table.remove(buf.samples, 1) end
-			buf.lastPos = hrp.Position
-			buf.lastT   = now
-		end
-		if #buf.samples == 0 then return v3new(0, 0, 0) end
-		local sum = v3new(0, 0, 0)
-		for _, v in ipairs(buf.samples) do sum = sum + v end
-		return sum / #buf.samples
-	end
-
-	-- Predict target's lateral position after flightTime seconds.
-	-- Y is zeroed — gravity is already handled by solveArc, not here.
-	local function predictPosition(player, tgtPoint, flightTime)
-		local vel = sampleVelocity(player)
-		return v3new(
-			tgtPoint.X + vel.X * flightTime,
-			tgtPoint.Y,
-			tgtPoint.Z + vel.Z * flightTime
-		)
-	end
 
 	-- BULLET PEEK: ray helpers. Exclude our camera/character only — the TARGET
 	-- stays in the filter so cover genuinely blocks the ray (a ray that ends on
@@ -4205,25 +3748,15 @@ do
 	-- Shared with Triggerbot: this is the exact eye→target test that colours
 	-- the snapline green (clear) / red (covered).
 	OVX.rayClear = rayClear
-	-- GUN PEEK: sidestep so the muzzle itself clears cover. Two modes:
-	-- desync (default): the SERVER copy of your character moves to the peek
-	-- spot while the real body never leaves home — no teleport jank; the
-	-- camera carries the viewmodel to the peeked eye so the Fire origin
-	-- matches the spoofed position the server sees. Teleport mode moves the
-	-- real HRP like before. Both fire legally — no packet forgery.
+	-- GUN PEEK: sidestep so the muzzle clears cover. The real body is
+	-- moved briefly and restored before the next physics step.
 	local bpHome, bpPeekPos, bpPeekUntil = nil, nil, 0
-	local bpPeekEye, bpDesync = nil, false
 	local function gunPeekStop()
 		if not bpHome then return end
-		if bpDesync then
-			if OVX.desyncPeekClear then pcall(OVX.desyncPeekClear) end
-		else
-			local hrp = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
-			if hrp then pcall(function() hrp.CFrame = bpHome end) end
-		end
-		bpHome, bpPeekPos, bpPeekEye, bpDesync = nil, nil, nil, false
+		local hrp = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
+		if hrp then pcall(function() hrp.CFrame = bpHome end) end
+		bpHome, bpPeekPos, bpPeekUntil = nil, nil, 0
 	end
-	-- sidestep candidate with a clear line from the future eye to the aim point
 	local function gunPeekFind(tgt, eye)
 		local hrp = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
 		if not hrp then return nil end
@@ -4243,7 +3776,6 @@ do
 	end
 	local function gunPeekStart(tgt, eye)
 		if bpHome then
-			-- already peeked: extend the window
 			bpPeekUntil = os.clock() + 0.3
 			return
 		end
@@ -4251,21 +3783,11 @@ do
 		if not cand then return end
 		local hrp = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
 		if not hrp then return end
-		local eyeUp = eye.Y - hrp.Position.Y
 		bpHome = hrp.CFrame
 		bpPeekPos = cand
-		bpPeekEye = cand + v3new(0, eyeUp, 0)
 		bpPeekUntil = os.clock() + 0.3
-		-- desync mode arms on the NEXT Heartbeat, after this frame's natural
-		-- shot (fired from home) is already in the send queue. Off by default:
-		-- in this game the spoofed position may never reach the server, and
-		-- peek shots sent from an origin the server can't match get rejected
-		bpDesync = flags["bp_desync"] == true and type(OVX.desyncPeekSet) == "function"
-		if not bpDesync then
-			hrp.CFrame = CFrame.new(cand) * bpHome.Rotation
-		end
+		hrp.CFrame = CFrame.new(cand) * bpHome.Rotation
 	end
-	-- hold the peek until the window lapses or the lock drops
 	bind(RunService.Heartbeat:Connect(function()
 		if not bpHome then return end
 		local tgt = OVX.saTarget
@@ -4273,34 +3795,18 @@ do
 			gunPeekStop()
 			return
 		end
-		if bpDesync then
-			-- glue the spoof to the peek spot every Heartbeat (the desync
-			-- block rewrites the server copy; the local body stays home)
-			if OVX.desyncPeekSet then pcall(OVX.desyncPeekSet, CFrame.new(bpPeekPos) * bpHome.Rotation) end
-			return
-		end
 		local hrp = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
-		if not hrp then
-			gunPeekStop()
-			return
-		end
+		if not hrp then gunPeekStop(); return end
 		hrp.CFrame = CFrame.new(bpPeekPos) * bpHome.Rotation
 	end))
 	bind({ Disconnect = gunPeekStop })
-	-- camera holds the crosshair on the locked target while peeked (desync:
-	-- it also carries the eye to the peek spot so the origin matches)
-	-- drop any binding left by a previous copy before installing our own
 	pcall(function() RunService:UnbindFromRenderStep("OVXGunPeekCam") end)
 	RunService:BindToRenderStep("OVXGunPeekCam", Enum.RenderPriority.Camera.Value + 1, function()
 		if not bpHome then return end
 		local tgt = OVX.saTarget
 		local cam = Workspace.CurrentCamera
 		if cam and tgt and tgt.part and tgt.part.Parent then
-			if bpDesync and bpPeekEye then
-				cam.CFrame = CFrame.lookAt(bpPeekEye, tgt.part.Position)
-			else
-				cam.CFrame = CFrame.lookAt(cam.CFrame.Position, tgt.part.Position)
-			end
+			cam.CFrame = CFrame.lookAt(cam.CFrame.Position, tgt.part.Position)
 		end
 	end)
 	bind({ Disconnect = function()
@@ -4431,78 +3937,8 @@ do
 
 	local _saTarget = nil
 
-	-- ── BOW AIM VIA shared.HeldViewCFrame ───────────────────────────────────
-	-- BowClient builds BOTH the Fire packet direction and its own local arrow
-	-- simulation from shared.HeldViewCFrame. Bending only the Fire packet made
-	-- the client sim and the server re-sim disagree, so every claim was
-	-- rejected. Bend the held view instead: packet + sim + server all agree.
-	local bowOrigHV, bowHVTarget = nil, nil
-	local bowHvDone = false
-	local function bowHeldView(cf)
-		local orig = bowOrigHV
-		if not (saActive and flags and flags["sa_enabled"] and flags["sa_bow_enabled"] ~= false) then
-			return orig and orig(cf) or nil
-		end
-		local tool = lp.Character and lp.Character:FindFirstChildOfClass("Tool")
-		local isBow = tool and (tool:GetAttribute("BowStyle") ~= nil
-			or tool.Name == "Hunting Bow" or tool.Name == "Compound Bow"
-			or tool.Name == "Mini Crossbow" or tool.Name == "Blowpipe")
-		local tgt = _saTarget
-		if not (tgt and tgt.part and tgt.part.Parent) then return orig and orig(cf) or nil end
-		local base = orig and orig(cf) or cf
-		if typeof(base) ~= "CFrame" then base = cf end
-		local livePoint = tgt.part.Position
-		local aimPoint = livePoint
-		local dir, flight = solveArc(base.Position, livePoint, arrowSpeed or 175, arrowGravity or 18)
-		if not dir then return base end
-		local lead = tonumber(flags["sa_bow_lead"]) or 1
-		if lead > 0 and flight and flight > 0 then
-			local plr = tgt.model and Players:GetPlayerFromCharacter(tgt.model) or nil
-			local vel = plr and sampleVelocity(plr) or v3new(0, 0, 0)
-			if vel.Magnitude < 0.05 then
-				local root = tgt.model and (tgt.model:FindFirstChild("HumanoidRootPart") or tgt.model.PrimaryPart)
-				if root then vel = root.AssemblyLinearVelocity or vel end
-			end
-			if vel.Magnitude > 0.1 then
-				-- converge: the lead point changes the flight time, which changes
-				-- the lead. Two passes is enough for a moving target.
-				for _ = 1, 2 do
-					aimPoint = livePoint + v3new(vel.X * flight * lead, 0, vel.Z * flight * lead)
-					local nd, nf = solveArc(base.Position, aimPoint, arrowSpeed or 175, arrowGravity or 18)
-					if not nd then break end
-					dir, flight = nd, nf
-				end
-				OVX.bowLeadVel = vel
-			end
-		end
-		OVX.bowAimAt = aimPoint
-		OVX.bowFlight = flight
-		return CFrame.lookAt(base.Position, base.Position + dir)
-	end
-	local function installBowHeldView()
-		if bowHvDone then return true end
-		if type(hookfunction) ~= "function" or type(newcclosure) ~= "function" then return false end
-		local sh = getrenv and getrenv().shared or shared
-		if not sh then return false end
-		local cur = sh.HeldViewCFrame
-		if type(cur) ~= "function" then return false end
-		local ok, orig = pcall(function() return hookfunction(cur, newcclosure(bowHeldView, "OVXBowAim")) end)
-		if ok and type(orig) == "function" then
-			bowOrigHV, bowHVTarget, bowHvDone = orig, cur, true
-			OVX.bowHVInstalls = (OVX.bowHVInstalls or 0) + 1
-			return true
-		end
-		return false
-	end
-	installBowHeldView()
-	bind({ Disconnect = function()
-		if bowHVTarget and bowOrigHV and type(restorefunction) == "function" then
-			pcall(restorefunction, bowOrigHV, bowHVTarget)
-		end
-		bowOrigHV, bowHVTarget, bowHvDone = nil, nil, false
-	end })
 	local _saColor = c3(60, 255, 60)
-	local lastScanAt, lastBowAt = 0, 0
+	local lastScanAt = 0
 	bind(RunService.Heartbeat:Connect(function()
 		if not (saActive and flags["sa_enabled"]) then
 			_saTarget = nil
@@ -4523,10 +3959,6 @@ do
 				_saColor = covered and c3(255, 60, 60) or c3(60, 255, 60)
 			end
 		end
-		if now - lastBowAt >= 1 then
-			lastBowAt = now
-			pcall(refreshBowRemotes)
-		end
 	end))
 	bind(RunService.RenderStepped:Connect(function()
 		local on = saActive and flags["sa_enabled"]
@@ -4537,9 +3969,9 @@ do
 		end
 		local m = UIS:GetMouseLocation()
 		local radius = OVX.saFov()
-		fovCircle.Visible = flags["sa_show_fov"] == true
+		fovCircle.Visible = flags["sa_show_fov"] == true and radius < math.huge and true or false
 		fovCircle.Position = v2new(m.X, m.Y)
-		if fovCircle.Visible then fovCircle.Radius = math.max(1, math.min(radius, 5000)) end
+		if fovCircle.Visible then fovCircle.Radius = radius end
 		local tgt = _saTarget
 		local allowNpc = flags["sa_snapline_npc"] ~= false
 		local canDraw = (flags["sa_snapline"] or flags["sa_cross"]) and tgt
@@ -4577,7 +4009,7 @@ do
 
 	-- Integrated remote jack: the original game-specific Fire/Hit path plus
 	-- the attached script's multi-method fire/hit/damage remote buckets.
-	if (FireRemote or next(SA.fireRemotes) ~= nil or next(SA.hitRemotes) ~= nil or next(SA.bowRemotes) ~= nil)
+	if (FireRemote or next(SA.fireRemotes) ~= nil or next(SA.hitRemotes) ~= nil)
 		and hookmetamethod and newcclosure and getnamecallmethod then
 		local firingOwn = false
 		local hasCheckcaller = type(checkcaller) == "function"
@@ -4630,9 +4062,6 @@ do
 			if notOurs then
 				local method = getnamecallmethod()
 				if method == "FireServer" then
-					if flags["sf_tracers_enabled"] and OVX.sciFiTracer then
-						pcall(OVX.sciFiTracer, self, ...)
-					end
 					if flags["sa_enabled"] and flags["sa_remote_jack"] ~= false then
 					-- FirearmsRemotes.Fire: known packet shape + gun peek.
 					if self == FireRemote then
@@ -4671,7 +4100,7 @@ do
 						end
 					end
 					-- Generic fire/damage remotes discovered by the bucket scan.
-					if SA.fireRemotes[self] and not SA.bowRemotes[self] and self ~= FireRemote then
+					if SA.fireRemotes[self] and self ~= FireRemote then
 						local tgt = _saTarget
 						if tgt and tgt.part and tgt.part.Parent then
 							local args = { ... }
@@ -4680,21 +4109,6 @@ do
 							sendClaims(SA.pendingId, tgt.part, livePoint)
 							return ret
 						end
-					end
-					-- Bow/launch remotes: held view already bends the shot.
-					if self == BowFire or self == BowLaunch or SA.bowRemotes[self] then
-						OVX.bowFireCount = (OVX.bowFireCount or 0) + 1
-						if flags["sa_bow_enabled"] ~= false then
-							local tgt = _saTarget
-							local a = { ... }
-							local claim = a[4]
-							local claimId = type(claim) == "table" and type(claim.id) == "number" and claim.id or a[3]
-							if tgt and tgt.part and tgt.part.Parent and claimId then
-								rememberClaim(claimId)
-								sendClaims(claimId, tgt.part, tgt.part.Position)
-							end
-						end
-						return old(self, ...)
 					end
 					-- Suppress the game's stale original claim for this shot id.
 					if (SA.hitRemotes[self] or self == HitRemote) and SA.pendingId ~= nil
@@ -4727,7 +4141,7 @@ do
 end
 
 -- ================================================================
--- // TRIGGERBOT (input-level, guns + bows)
+-- // TRIGGERBOT (input-level, guns)
 -- //   Fires the held gun when a valid target sits inside the FOV and
 -- //   is VISIBLE: with Silent Aim on it reuses SA's lock, so a green
 -- //   snapline means "this will fire" (red/covered = hold fire). With
@@ -4742,10 +4156,6 @@ end
 do
 	local hasInput = type(mouse1press) == "function" and type(mouse1release) == "function"
 	local lastClick, clicking = 0, false
-	local BOW_NAMES = {
-		["Hunting Bow"] = true, ["Compound Bow"] = true, ["Mini Crossbow"] = true,
-		["Blow Pipe"] = true, Speargun = true,
-	}
 	local function fireClick(hold)
 		if clicking then return end
 		clicking = true
@@ -4844,16 +4254,13 @@ do
 		local tool = char:FindFirstChildOfClass("Tool")
 		if not tool then return end
 		local isGun = tool:GetAttribute("GunId") ~= nil
-		local isBow = not isGun and (tool:GetAttribute("BowStyle") ~= nil or BOW_NAMES[tool.Name] == true)
-		if not (isGun or isBow) then return end
+		if not isGun then return end
 		if tool:GetAttribute("Reloading") == true then return end
 		if isGun and (tonumber(tool:GetAttribute("Ammo")) or 0) <= 0 then return end
-		if isBow and (tonumber(tool:GetAttribute("Loaded") or 1) <= 0) then return end
 		if flags["tb_skip_holding"] ~= false
 			and UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then return end
 		-- Rapid Fire owns the cadence when it's on; otherwise use the gun's RPM
-		-- (bows have no RPM attribute, so fall back to one shot every 0.5s)
-		local rpm = tonumber(tool:GetAttribute("RPM")) or (isBow and 120 or 250)
+		local rpm = tonumber(tool:GetAttribute("RPM")) or 250
 		if flags["wm_rapidfire"] then rpm = tonumber(flags["wm_rpm"]) or 600 end
 		local interval = 60 / math.max(rpm, 1)
 		local now = os.clock()
@@ -4875,9 +4282,8 @@ do
 		OVX.tbFireAt = now
 		OVX.tbTarget = mdl.Name
 		OVX.tbRpm = rpm
-		-- bows need a real draw before release unless Instant Charge is on
+		-- hold a short real click so the game processes the shot
 		local hold = math.min(0.05, interval * 0.5)
-		if isBow then hold = flags["wm_instantcharge"] and 0.15 or 0.7 end
 		fireClick(hold)
 	end))
 	bind({ Disconnect = function()
@@ -4886,18 +4292,14 @@ do
 	end })
 end
 
--- (bow SA merged into the firearms SA hook above — single __namecall hook)
 
 -- ================================================================
--- // WEAPON MODS (bow SA stub removed — kept for search anchor only)
--- //   NOTE: the line below is not real code, just a section separator
+-- // WEAPON MODS
 -- ================================================================
---[[ BOW SILENT AIM merged — search "BOW SA" in the firearms hook above ]]
 
--- (bow SA merged into the firearms SA hook above — no second hook needed)
 
 -- ================================================================
--- // WEAPON MODS (firearms + bow) — edits the live def/state tables
+-- // WEAPON MODS — edits the live def/state tables
 -- //   (ported from vault-esp_22: filtergc locates the weapon def/state
 -- //   tables; modded values are rewritten each frame with originals
 -- //   snapshotted so toggling off / unloading restores them)
@@ -4911,46 +4313,19 @@ do
 	local CFZ = CFrame.new()
 
 	local hasFilter = type(filtergc) == "function"
-	local defs, states, bows = {}, {}, {}
+	local defs, states = {}, {}
 	local origDef = setmetatable({}, { __mode = "k" })
 	local origMover = setmetatable({}, { __mode = "k" })
 	local rangeOrig = setmetatable({}, { __mode = "k" })
-	local bowDefs = {}
-	local origBow = setmetatable({}, { __mode = "k" })
-	local lastBowFind = 0
-
 	local function scan(keys)
 		if not hasFilter then return {} end
 		local ok, res = pcall(filtergc, "table", { Keys = keys }, false)
 		if ok and type(res) == "table" then return res end
 		return {}
 	end
-	local BOW_FIELDS = { "DrawTime", "ShakeAfter", "HoldMax", "ShotTime", "EquipTime", "ReloadTime", "MagSize", "Zoom" }
-	local function refindBow()
-		if not hasFilter then return end
-		local ok, res = pcall(filtergc, "table", { Keys = { "DrawTime", "ShakeAfter", "Kind", "Title" } }, false)
-		if not (ok and type(res) == "table") then return end
-		bowDefs = {}
-		for _, t in ipairs(res) do
-			if type(t) == "table" and type(t.Title) == "string" and type(t.Kind) == "string" then
-				bowDefs[#bowDefs + 1] = t
-			end
-		end
-	end
-	local function snapshotBow(def)
-		if origBow[def] then return end
-		local o = {}
-		for _, k in ipairs(BOW_FIELDS) do o[k] = def[k] end
-		origBow[def] = o
-	end
-	local function restoreBow(def)
-		local o = origBow[def]; if not o then return end
-		for k, v in pairs(o) do pcall(function() def[k] = v end) end
-	end
 	local function refind()
 		defs   = scan({ "recoilPitch", "recoilYaw", "hipSpread" })
 		states = scan({ "recoilQueue", "aimSwayCF", "sway" })
-		bows   = scan({ "draw", "drawSound" })
 	end
 
 	local DEF_FIELDS = {
@@ -4991,16 +4366,15 @@ do
 		local autoF   = flags["wm_autofire"]
 		local rapid   = flags["wm_rapidfire"]
 		local rpmV    = flags["wm_rpm"] or 0
-		local iCharge = flags["wm_instantcharge"]
 		local fastCycle = flags["wm_fastcycle"]
-		local active = noRec or noSpr or noSway or iAds or autoF or rapid or iCharge or fastCycle
+		local active = noRec or noSpr or noSway or iAds or autoF or rapid or fastCycle
 
 		if active then
 			-- re-scan for new def/state tables only while a mod is enabled
 			local now = os.clock()
 			-- filtergc is expensive: only rescan when we have nothing cached,
 			-- otherwise let the cached def/state tables do the work.
-			if now - lastFind > 5 and (#defs == 0 or #states == 0 or #bows == 0) then
+			if now - lastFind > 5 and (#defs == 0 or #states == 0) then
 				lastFind = now; pcall(refind)
 			end
 
@@ -5088,42 +4462,11 @@ do
 				end
 			end
 
-			-- bow mods: instant draw, no shake/sway, rapid follow-ups
-			local bowModNow = iCharge or noRec or noSway or rapid
-			if bowModNow then
-				local bt = os.clock()
-				if #bowDefs == 0 and bt - lastBowFind > 5 then lastBowFind = bt; refindBow() end
-				for _, def in ipairs(bowDefs) do
-					snapshotBow(def)
-					local o = origBow[def]
-					pcall(function()
-						if iCharge then
-							def.DrawTime = 0.01
-							if o.HoldMax ~= nil then def.HoldMax = o.HoldMax end -- keep real hold window
-						else
-							def.DrawTime = o.DrawTime
-							if o.HoldMax ~= nil then def.HoldMax = o.HoldMax end
-						end
-						if noRec then def.ShakeAfter = 1e6 else def.ShakeAfter = o.ShakeAfter end
-					end)
-				end
-				for _, bs in ipairs(bows) do
-					if type(bs) == "table" then
-						pcall(function()
-							-- do NOT force bs.draw = 1: the game's fire gate needs a real draw transition
-							if (noRec or noSway) and rawget(bs, "shake") ~= nil then bs.shake = 0 end
-							if rapid and rawget(bs, "shotAt") ~= nil then bs.shotAt = 0 end
-						end)
-					end
-				end
-			end
 		else
+
 			-- idle: nothing enabled — restore once, then stop touching the tables
 			if next(origDef) then
 				for def in pairs(origDef) do pcall(restore, def) end
-			end
-			if next(origBow) then
-				for def in pairs(origBow) do pcall(restoreBow, def) end
 			end
 		end
 
@@ -5145,13 +4488,12 @@ do
 	bind({ Disconnect = function()
 		wmActive = false
 		for def in pairs(origDef) do pcall(restore, def) end
-		for def in pairs(origBow) do pcall(restoreBow, def) end
 	end })
 end
 
 -- ================================================================
 -- // KI v2.1 FEATURES (ported): kill aura / autofarm nodes / hitsounds /
--- //   trajectory arc / gun packet hook (packet no spread)
+-- //   gun packet hook (packet no spread)
 -- //   Everything reads library flags directly; connections + drawings ride
 -- //   bind() so the top-level unload tears them all down.
 -- ================================================================
@@ -5491,14 +4833,14 @@ do
 	task.spawn(function()
 		for _ = 1, 30 do
 			local ready = true
-			for _, fname in ipairs({ "GatheringRemotes", "BowRemotes", "FirearmsRemotes" }) do
+			for _, fname in ipairs({ "GatheringRemotes", "FirearmsRemotes" }) do
 				local f = RepStorage:FindFirstChild(fname)
 				if not (f and f:FindFirstChild("HitMarker")) then ready = false break end
 			end
 			if ready then break end
 			task.wait(1)
 		end
-		for _, fname in ipairs({ "GatheringRemotes", "BowRemotes", "FirearmsRemotes" }) do
+		for _, fname in ipairs({ "GatheringRemotes", "FirearmsRemotes" }) do
 			local f = RepStorage:FindFirstChild(fname)
 			local r = f and f:FindFirstChild("HitMarker")
 			if r and r:IsA("RemoteEvent") then
@@ -5535,166 +4877,18 @@ do
 		end)
 	end))
 
-	-- ——— TRAJECTORY ARC ———
-	-- Draws the silent-aim shot's arc with the SAME ballistic solve the SA
-	-- commit uses, marched with the server's sim p = p0 + v0*t - 0.5*g*t^2.
-	-- Green impact marker = lands on target, red = miss.
-	local ARC_SEGS = 28
-	local arcSegs = {}
-	for i = 1, ARC_SEGS do
-		local l = Drawingnew("Line")
-		l.Thickness = 2
-		l.Transparency = 0.75
-		l.Visible = false
-		arcSegs[i] = l
-	end
-	local arcImpact = Drawingnew("Circle")
-	arcImpact.Thickness = 2
-	arcImpact.NumSides = 12
-	arcImpact.Radius = 6
-	arcImpact.Filled = false
-	arcImpact.Visible = false
-	local ARC_ON = c3(0, 255, 0)
-	local ARC_MISS = c3(255, 0, 0)
-	local function arcHide()
-		for i = 1, ARC_SEGS do arcSegs[i].Visible = false end
-		arcImpact.Visible = false
-	end
-	local function shotPhysics()
-		local char = lp.Character
-		local tool = char and char:FindFirstChildOfClass("Tool")
-		if not tool then return nil, nil end
-		local speed = tonumber(tool:GetAttribute("BulletSpeed"))
-		local g = tonumber(tool:GetAttribute("BulletGravity"))
-		if speed then return speed, g or 35 end
-		-- bow: use the live arrow speed captured from BowRemotes.Flight
-		if tool:FindFirstChild("BowClient") or tool:GetAttribute("NockTime") then
-			return OVX.arrowSpeed or 80, OVX.arrowGravity or 18
-		end
-		return nil, nil -- melee/hands: nothing to preview
-	end
-	bind(RunService.RenderStepped:Connect(function()
-		if not flags["traj_arc"] then arcHide() return end
-		local tgt = OVX.saTarget
-		local cam = Workspace.CurrentCamera
-		if not (tgt and tgt.model and tgt.model.Parent and cam and tgt.part and tgt.part.Parent) then arcHide() return end
-		local speed, g = shotPhysics()
-		if not speed then arcHide() return end
-		local base = cam.CFrame.Position
-		local part = tgt.part
-		local vel = part.AssemblyLinearVelocity or v3new(0, 0, 0)
-		local aim = part.Position
-		for _ = 1, 3 do
-			local t = (aim - base).Magnitude / math.max(speed, 1)
-			aim = part.Position + vel * t
-		end
-		-- low-arc ballistic solve
-		local disp = aim - base
-		local flat = v3new(disp.X, 0, disp.Z)
-		local dir
-		if flat.Magnitude < 2 or (g or 0) <= 0 then
-			dir = disp.Magnitude > 0.1 and disp.Unit or nil
-		else
-			local d = flat.Magnitude
-			local s2 = speed * speed
-			local disc = s2 * s2 - g * (g * d * d + 2 * disp.Y * s2)
-			if disc < 0 then
-				dir = disp.Unit
-			else
-				local theta = math.atan2(s2 - math.sqrt(disc), g * d)
-				local h = flat / d
-				dir = v3new(h.X * math.cos(theta), math.sin(theta), h.Z * math.cos(theta))
-			end
-		end
-		if not dir then arcHide() return end
-		local v0 = dir * speed
-		local step_dt = 1 / 30
-		local pts = { base + dir * 0.5 }
-		local prevD = (aim - pts[1]).Magnitude
-		for step = 1, 90 do
-			local t = step * step_dt
-			if t > 3 then break end
-			local np = base + v0 * t - v3new(0, 0.5 * g * t * t, 0)
-			local nd = (aim - np).Magnitude
-			pts[#pts + 1] = np
-			if nd < 1 then break end
-			if step > 3 and nd > prevD + 0.5 then break end
-			prevD = nd
-		end
-		local impact = pts[#pts]
-		local col = (impact - aim).Magnitude < 4 and ARC_ON or ARC_MISS
-		local n = #pts
-		local stride = math.max(1, floor((n - 1) / ARC_SEGS))
-		local seg, lastPt = 0, nil
-		local i = 1
-		while i <= n and seg < ARC_SEGS do
-			local sp = cam:WorldToViewportPoint(pts[i])
-			if sp.Z > 0 then
-				local cur = v2new(sp.X, sp.Y)
-				if lastPt then
-					seg += 1
-					local line = arcSegs[seg]
-					line.From = lastPt
-					line.To = cur
-					line.Color = col
-					line.Visible = true
-				end
-				lastPt = cur
-			else
-				lastPt = nil
-			end
-			i += stride
-		end
-		for j = seg + 1, ARC_SEGS do arcSegs[j].Visible = false end
-		local ip = cam:WorldToViewportPoint(impact)
-		if ip.Z > 0 then
-			arcImpact.Position = v2new(ip.X, ip.Y)
-			arcImpact.Color = col
-			arcImpact.Visible = true
-		else
-			arcImpact.Visible = false
-		end
-	end))
-	bind({ Disconnect = function()
-		for i = 1, ARC_SEGS do pcall(function() arcSegs[i]:Remove() end) end
-		pcall(function() arcImpact:Remove() end)
-	end })
-
 	-- ——— GUN PACKET HOOK ———
 	-- Separate hook on FirearmsRemotes.Fire.FireServer (a DIFFERENT closure
-	-- from the SA namecall hook — never stacked). Packet no spread: recenters
-	-- the packet direction on the held view (skipped while Silent Aim is
-	-- redirecting).
+	-- from the SA namecall hook — never stacked). No bow held-view hook is
+	-- installed; Silent Aim remains the only direction rewrite.
 	local pktHooked, pktOrig = nil, nil
 	local genvPkt = getgenv().__ovxPkt
 	if not genvPkt then genvPkt = {}; getgenv().__ovxPkt = genvPkt end
-	local function heldViewBase()
-		local cam = Workspace.CurrentCamera
-		if not cam then return nil end
-		local base = cam.CFrame
-		pcall(function()
-			local sh = getrenv and getrenv().shared
-			if sh and type(sh.HeldViewCFrame) == "function" then
-				local ok, r = pcall(sh.HeldViewCFrame, base)
-				if ok and typeof(r) == "CFrame" then base = r end
-			end
-		end)
-		return base
-	end
 	local function pktBody(self, origin, dir, ...)
 		if typeof(origin) ~= "Vector3" then return pktOrig(self, origin, dir, ...) end
 		local rest = { ... }
 		-- Fire(origin, direction, seedNo, claim{ id, t }): after self/origin/dir,
 		-- rest[1] = seedNo and rest[2] = the claim table
-		-- packet no spread: recenter the direction on the held view; skipped
-		-- when Silent Aim just rewrote it (SA wins)
-		if flags["pkt_nospread"] and typeof(dir) == "Vector3"
-			and not (OVX.saRedirectAt and os.clock() - OVX.saRedirectAt < 0.5) then
-			local base = heldViewBase()
-			if base then
-				return pktOrig(self, origin, base.LookVector, unpack(rest, 1, 2))
-			end
-		end
 		return pktOrig(self, origin, dir, unpack(rest, 1, math.max(#rest, 0)))
 	end
 	local function pktUnhook()
@@ -5724,7 +4918,7 @@ do
 			pktOrig = orig
 			pktHooked = target
 			genvPkt.hooked, genvPkt.orig = target, orig
-			print("[OVX] gun packet hook on Firearms.Fire (no spread)")
+			print("[OVX] gun packet hook on Firearms.Fire")
 			return true
 		end
 		return false
@@ -5748,220 +4942,15 @@ do
 end
 
 -- ================================================================
--- // DESYNC (v2.1 port): fake body to the server, real body stays local
--- //   The server's snapshot of you carries the offset/rotation (Heartbeat
--- //   writes it after physics), while a First-priority RenderStep puts the
--- //   REAL cframe back before the next physics step. Camera, aim, mining and
--- //   movement all run on the real body, so shooting and gathering work
--- //   exactly as they do with desync off.
--- ================================================================
-do
-	local dsRealCF, dsRealVel, dsRealAng = nil, nil, nil
-	local dsSpoofed, dsVelSpoofed = false, false
-	local dsDummy, dsAnimTrack, dsAnimChar = nil, nil, nil
-
-	local function dsParts()
-		local c = lp.Character
-		return c, c and c:FindFirstChild("HumanoidRootPart"), c and c:FindFirstChildOfClass("Humanoid")
-	end
-	local function dsClearDummy()
-		if dsDummy then pcall(function() dsDummy:Destroy() end) dsDummy = nil end
-	end
-	local function dsSetupDummy()
-		dsClearDummy()
-		local c = lp.Character
-		if not c then return end
-		local okC, clone = pcall(function()
-			c.Archivable = true
-			local cl = c:Clone()
-			c.Archivable = false
-			return cl
-		end)
-		if not (okC and clone) then return end
-		clone.Name = "DesyncCharVis"
-		local dHum = clone:FindFirstChildOfClass("Humanoid")
-		if dHum then
-			pcall(function() dHum.PlatformStand = true end)
-			pcall(function() dHum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None end)
-			for _, st in ipairs(Enum.HumanoidStateType:GetEnumItems()) do
-				pcall(function() dHum:SetStateEnabled(st, false) end)
-			end
-		end
-		for _, v in ipairs(clone:GetDescendants()) do
-			if v:IsA("Script") or v:IsA("LocalScript") then
-				v:Destroy()
-			elseif v:IsA("BasePart") then
-				v.CanCollide = false
-				v.CanTouch = false
-				v.CanQuery = false
-				v.Massless = true
-				v.Material = Enum.Material.ForceField
-				v.Color = c3(150, 0, 255)
-				v.Transparency = (v.Name == "HumanoidRootPart") and 1 or 0.2
-			elseif v:IsA("Decal") or v:IsA("Texture") then
-				v:Destroy()
-			end
-		end
-		local dHrp = clone:FindFirstChild("HumanoidRootPart")
-		if dHrp then dHrp.Anchored = true end
-		clone.Parent = Workspace.CurrentCamera
-		dsDummy = clone
-	end
-	local function dsFakeCF(hrp)
-		local fake = hrp.CFrame
-		if flags["ds_pos"] ~= false then
-			fake = fake + v3new(tonumber(flags["ds_ox"]) or 0, tonumber(flags["ds_oy"]) or -2.4, tonumber(flags["ds_oz"]) or 0)
-		end
-		if flags["ds_rot"] ~= false then
-			fake = fake * CFrame.Angles(math.rad(tonumber(flags["ds_rx"]) or 90), math.rad(tonumber(flags["ds_ry"]) or 0), math.rad(tonumber(flags["ds_rz"]) or 0))
-		end
-		return fake
-	end
-	local function dsAnim(on, char)
-		if dsAnimTrack then
-			pcall(function() dsAnimTrack:Stop() end)
-			pcall(function() dsAnimTrack:Destroy() end)
-			dsAnimTrack, dsAnimChar = nil, nil
-		end
-		if not on then return end
-		local hum = char and char:FindFirstChildOfClass("Humanoid")
-		local animator = hum and hum:FindFirstChildOfClass("Animator")
-		if not animator then return end
-		pcall(function()
-			local anim = Instance.new("Animation")
-			anim.AnimationId = "rbxassetid://616119360"
-			dsAnimTrack = animator:LoadAnimation(anim)
-			dsAnimTrack.Priority = Enum.AnimationPriority.Action4
-			dsAnimTrack.Looped = true
-			dsAnimTrack:Play()
-			dsAnimChar = char
-			if flags["ds_animfreeze"] then dsAnimTrack:AdjustSpeed(0) end
-		end)
-	end
-
-	-- gun-peek desync: while set, the spoof carries the SERVER copy of the
-	-- character to the gun-peek spot (driven by the SA block) — independent
-	-- of ds_enabled, and the ds_pos/ds_rot presets are bypassed while peeking
-	local dsPeekCF = nil
-	function OVX.desyncPeekSet(cf) dsPeekCF = cf end
-	function OVX.desyncPeekClear() dsPeekCF = nil end
-
-	bind(RunService.Heartbeat:Connect(function()
-		local char, hrp, hum = dsParts()
-		local canSpoof = (dsPeekCF ~= nil or (flags["ds_enabled"]
-			and (flags["ds_pos"] ~= false or flags["ds_rot"] ~= false)))
-			and hrp and hum and hum.Health > 0 and not hum.SeatPart
-			and not (char and char:GetAttribute("Downed"))
-		if canSpoof then
-			dsRealCF = hrp.CFrame
-			dsRealVel = hrp.AssemblyLinearVelocity
-			dsRealAng = hrp.AssemblyAngularVelocity
-			hrp.CFrame = dsPeekCF or dsFakeCF(hrp)
-			dsSpoofed = true
-			-- optional velocity poison (rubberbandy — OFF by default; never
-			-- while gun-peek desync is holding the server copy in place)
-			if flags["ds_velocity"] and not dsPeekCF then
-				local vt = flags["ds_veltype"] or "low"
-				local sv
-				if vt == "high y" then
-					sv = v3new(0, 16384, 0)
-				elseif vt == "limit" then
-					sv = v3new(math.random(-2147483648, 2147483647),
-						math.random(-2147483648, 2147483647), math.random(-2147483648, 2147483647))
-				elseif vt == "high" then
-					sv = v3new(math.random(1, 2) == 1 and -16384 or 16384,
-						math.random(1, 2) == 1 and -14384 or 16384, math.random(1, 2) == 1 and -16384 or 16384)
-				else
-					sv = v3new(math.random(1, 2) == 1 and -300 or 300,
-						math.random(1, 2) == 1 and -300 or 300, math.random(1, 2) == 1 and -300 or 300)
-				end
-				hrp.AssemblyLinearVelocity = sv
-				dsVelSpoofed = true
-			end
-		else
-			dsSpoofed = false
-		end
-	end))
-
-	local function dsRender()
-		local char, hrp = dsParts()
-		-- restore the REAL body before the character controller runs: the
-		-- server already got the fake snapshot, local physics never sees it
-		if dsSpoofed and hrp and dsRealCF then
-			hrp.CFrame = dsRealCF
-			hrp.AssemblyLinearVelocity = dsRealVel or hrp.AssemblyLinearVelocity
-			if dsVelSpoofed then
-				hrp.AssemblyAngularVelocity = dsRealAng or hrp.AssemblyAngularVelocity
-				dsVelSpoofed = false
-			end
-			dsSpoofed = false
-		end
-		-- dummy visualizer: lazily (re)built — the camera is recreated on respawn
-		if flags["ds_enabled"] and flags["ds_vis"] then
-			local cam = Workspace.CurrentCamera
-			if not dsDummy or not cam or dsDummy.Parent ~= cam then dsSetupDummy() end
-			if dsDummy and char and hrp then
-				local dHrp = dsDummy:FindFirstChild("HumanoidRootPart")
-				if dHrp then dHrp.CFrame = dsFakeCF(hrp) end
-				for _, motor in ipairs(char:GetDescendants()) do
-					if motor:IsA("Motor6D") then
-						local dm = dsDummy and dsDummy:FindFirstChild(motor.Name, true)
-						if dm and dm:IsA("Motor6D") then dm.Transform = motor.Transform end
-					end
-				end
-			end
-		elseif dsDummy then
-			dsClearDummy()
-		end
-		-- fake anim: lazy start/stop, restarts after respawn (tracks die with the rig)
-		if flags["ds_enabled"] and flags["ds_anim"] and char and char ~= dsAnimChar then
-			dsAnim(true, char)
-		elseif not (flags["ds_enabled"] and flags["ds_anim"]) and dsAnimTrack then
-			dsAnim(false)
-		end
-		if flags["ds_enabled"] and flags["ds_anim"] and dsAnimTrack and flags["ds_animfreeze"] then
-			pcall(function() dsAnimTrack.TimePosition = 0 end)
-		end
-	end
-	pcall(function() RunService:UnbindFromRenderStep("OVXDesync") end)
-	RunService:BindToRenderStep("OVXDesync", Enum.RenderPriority.First.Value, dsRender)
-
-	-- presets: tuned so the fake body stays shallow enough to never fight the
-	-- server's floor checks (no rubberband) while still hiding the real hitbox
-	function OVX.desyncPreset(name)
-		local function setF(f, v)
-			local fn = library.config_flags and library.config_flags[f]
-			if fn then pcall(fn, v) else flags[f] = v end
-		end
-		if name == "Deep underground" then
-			setF("ds_oy", -5); setF("ds_rx", 90)
-		elseif name == "Rotation only (stealth)" then
-			setF("ds_oy", 0); setF("ds_rx", 90)
-		else -- "Semi-underground (best)"
-			setF("ds_oy", -2.4); setF("ds_rx", 90)
-		end
-	end
-
-	bind({ Disconnect = function()
-		pcall(function() RunService:UnbindFromRenderStep("OVXDesync") end)
-		dsAnim(false)
-		dsClearDummy()
-		local _, hrp = dsParts()
-		if hrp and dsRealCF then pcall(function() hrp.CFrame = dsRealCF end) end
-	end })
-end
-
--- ================================================================
--- // MISC — SPEED / PHASE / SPIDER / FREECAM  (ported from vape v4)
+-- // MISC — SPEED / SPIDER / FREECAM  (ported from vape v4)
 -- //   Logic copied 1:1 from vape v4 and adapted only where vape used
 -- //   its own libraries: entitylib -> direct character access, vape
 -- //   options -> library flags. Speed module = Velocity method with
 -- //   MoveDirection/Direct move modes + Custom Properties friction.
--- //   Phase = full method set (Part/Character/CFrame/Motor/FFlag).
 -- //   Spider = Velocity/Impulse/CFrame/Part modes. Freecam = Classic
 -- //   (camera-controller hook) + Roblox (FreeCamera module) modes.
 -- ================================================================
-local setSpeed, setPhase, setSpider, setFreecam, spiderTruss, guideGui  -- assigned below, used by the UI
+local setSpeed, setSpider, setFreecam, spiderTruss  -- assigned below, used by the UI
 do
 	local function getChar()
 		local char = lp.Character
@@ -5971,19 +4960,6 @@ do
 			return true, char, hum, root
 		end
 		return false, char, hum, root
-	end
-
-	-- vape: motorMove / calculateMoveVector (1:1)
-	local function motorMove(target, cf)
-		local part = Instance.new("Part")
-		part.Anchored = true
-		part.Parent = workspace
-		local motor = Instance.new("Motor6D")
-		motor.Part0 = target
-		motor.Part1 = part
-		motor.C1 = cf
-		motor.Parent = part
-		task.delay(0, part.Destroy, part)
 	end
 
 	local function calculateMoveVector(vec)
@@ -6036,112 +5012,8 @@ do
 	-- shared params
 	local rayCheck = RaycastParams.new()
 	rayCheck.RespectCanCollide = true
-	local overlapCheck = OverlapParams.new()
-	local modified = {}
-	local fflag = nil
-	local teleported = false
-	local spiderShift = false
 	local active = false  -- spider ray state (vape: Active)
 	local truss = nil     -- spider Part mode (vape: Truss)
-
-	local function setFFlag(name, val)
-		local f = setfflag or setfastflag
-		if type(f) == "function" then pcall(f, name, val) end
-	end
-
-	local function grabClosestNormal(ray)
-		local partCF, mag, closest = ray.Instance.CFrame, 0, Enum.NormalId.Top
-		for _, normal in Enum.NormalId:GetEnumItems() do
-			local dot = partCF:VectorToWorldSpace(Vector3.fromNormalId(normal)):Dot(ray.Normal)
-			if dot > mag then
-				mag, closest = dot, normal
-			end
-		end
-		return Vector3.fromNormalId(closest).X ~= 0 and "X" or "Z"
-	end
-
-	local function phaseRestore()
-		if fflag then
-			setFFlag("AssemblyExtentsExpansionStudHundredth", "30")
-			fflag = nil
-		end
-		for part in pairs(modified) do
-			pcall(function() part.CanCollide = true end)
-		end
-		table.clear(modified)
-	end
-
-	-- ——— PHASE (vape 1:1: Part / Character / CFrame / Motor / FFlag) ———
-	local phaseConn, phaseTpConn = nil, nil
-	local function phaseStep(mode)
-		local alive, char, hum, root = getChar()
-		if not alive then return end
-		if mode == "Part" then
-			local camera = Workspace.CurrentCamera
-			overlapCheck.FilterDescendantsInstances = { camera, char }
-			local parts = Workspace:GetPartBoundsInBox(root.CFrame + v3new(0, 1, 0), root.Size + v3new(7, math.max(hum.HipHeight, 2), 7), overlapCheck)
-			for _, part in ipairs(parts) do
-				if part.CanCollide and (not flags["sp_enabled"] or spiderShift) then
-					modified[part] = true
-					part.CanCollide = false
-				end
-			end
-			for part in pairs(modified) do
-				if not table.find(parts, part) then
-					modified[part] = nil
-					part.CanCollide = true
-				end
-			end
-		elseif mode == "Character" then
-			for _, part in ipairs(char:GetDescendants()) do
-				if part:IsA("BasePart") and part.CanCollide and (not flags["sp_enabled"] or spiderShift) then
-					modified[part] = true
-					part.CanCollide = flags["sp_enabled"] and not spiderShift
-				end
-			end
-		elseif mode == "CFrame" or mode == "Motor" then
-			local camera = Workspace.CurrentCamera
-			local head = char:FindFirstChild("Head") or root
-			rayCheck.FilterDescendantsInstances = { camera, char }
-			overlapCheck.FilterDescendantsInstances = { camera, char }
-			local ray = Workspace:Raycast(head.Position, hum.MoveDirection * 1.1, rayCheck)
-			if ray and (not flags["sp_enabled"] or spiderShift) then
-				local phaseDirection = grabClosestNormal(ray)
-				if ray.Instance.Size[phaseDirection] <= (flags["ph_wall"] or 5) then
-					local dest = root.CFrame + (ray.Normal * (-(ray.Instance.Size[phaseDirection]) - (root.Size.X / 1.5)))
-					if #Workspace:GetPartBoundsInBox(dest, Vector3.one, overlapCheck) <= 0 then
-						if mode == "Motor" then
-							motorMove(root, dest)
-						else
-							root.CFrame = dest
-						end
-					end
-				end
-			end
-		elseif mode == "FFlag" then
-			if teleported then return end
-			setFFlag("AssemblyExtentsExpansionStudHundredth", "-10000")
-			fflag = true
-		end
-	end
-
-	function setPhase(on)
-		if phaseConn then pcall(function() phaseConn:Disconnect() end); phaseConn = nil end
-		if phaseTpConn then pcall(function() phaseTpConn:Disconnect() end); phaseTpConn = nil end
-		phaseRestore()
-		if on then
-			local mode = flags["ph_mode"] or "Part"
-			phaseConn = RunService.Stepped:Connect(function()
-				if flags["ph_enabled"] then phaseStep(flags["ph_mode"] or "Part") end
-			end)
-			if mode == "FFlag" then
-				phaseTpConn = lp.OnTeleport:Connect(function()
-					teleported = true
-					setFFlag("AssemblyExtentsExpansionStudHundredth", "30")
-				end)
-			end
-		end
-	end
 
 	-- ——— SPIDER (vape 1:1: Velocity / Impulse / CFrame / Part) ———
 	local spiderConn = nil
@@ -6168,7 +5040,6 @@ do
 				if not alive then return end
 				local camera = Workspace.CurrentCamera
 				local chars = { camera, char, truss }
-				spiderShift = UIS:IsKeyDown(Enum.KeyCode.LeftShift)
 				rayCheck.FilterDescendantsInstances = chars
 				rayCheck.CollisionGroup = root.CollisionGroup
 				local mode = flags["sp_mode"] or "Velocity"
@@ -6181,24 +5052,22 @@ do
 					end
 					active = ray
 					if active and ray.Normal.Y == 0 then
-						if not flags["ph_enabled"] or not spiderShift then
-							if flags["sp_state"] then
-								pcall(function() hum:ChangeState(Enum.HumanoidStateType.Climbing) end)
-							end
-							root.Velocity *= v3new(1, 0, 1)
-							local value = flags["sp_speed"] or 30
-							if mode == "CFrame" then
-								root.CFrame += v3new(0, value * dt, 0)
-							elseif mode == "Impulse" then
-								root:ApplyImpulse(v3new(0, value, 0) * root.AssemblyMass)
-							else
-								root.Velocity += v3new(0, value, 0)
-							end
+						if flags["sp_state"] then
+							pcall(function() hum:ChangeState(Enum.HumanoidStateType.Climbing) end)
+						end
+						root.Velocity *= v3new(1, 0, 1)
+						local value = flags["sp_speed"] or 30
+						if mode == "CFrame" then
+							root.CFrame += v3new(0, value * dt, 0)
+						elseif mode == "Impulse" then
+							root:ApplyImpulse(v3new(0, value, 0) * root.AssemblyMass)
+						else
+							root.Velocity += v3new(0, value, 0)
 						end
 					end
 				else
 					local ray = Workspace:Raycast(root.Position - v3new(0, hip - 0.5, 0), root.CFrame.LookVector * 2, rayCheck)
-					if ray and (not flags["ph_enabled"] or not spiderShift) then
+					if ray then
 						truss.Position = ray.Position - ray.Normal * 0.9
 					else
 						truss.Position = Vector3.zero
@@ -6206,7 +5075,6 @@ do
 				end
 			end)
 		else
-			spiderShift = false
 			active = false
 		end
 	end
@@ -6339,162 +5207,10 @@ do
 		end
 	end
 
-	-- ——— NOCLIP GUIDE UI (custom draggable window, toggled from Misc) ———
-	guideGui = Instance.new("ScreenGui")
-	guideGui.Name = "VaultNoclipGuide"
-	guideGui.ResetOnSpawn = false
-	guideGui.DisplayOrder = 999998
-	guideGui.Enabled = false
-	pcall(function() guideGui.Parent = (gethui and gethui()) or CoreGui end)
-
-	local ACCENT  = Color3.fromRGB(96, 120, 190)
-	local OUTLINE = Color3.fromRGB(10, 10, 10)
-	local INLINE  = Color3.fromRGB(30, 30, 38)
-	local CONTRST = Color3.fromRGB(41, 41, 55)
-	local TXT     = Color3.fromRGB(180, 180, 180)
-
-	local main = Instance.new("Frame")
-	main.Size = UDim2.fromOffset(330, 280)
-	main.Position = UDim2.new(0.5, -165, 0.5, -140)
-	main.BackgroundColor3 = OUTLINE
-	main.BorderSizePixel = 0
-	main.Active = true
-	main.Parent = guideGui
-	Instance.new("UICorner", main).CornerRadius = UDim.new(0, 10)
-	local stroke = Instance.new("UIStroke", main)
-	stroke.Color = ACCENT
-	stroke.Thickness = 1
-	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-
-	-- title bar (drag handle)
-	local titleBar = Instance.new("Frame")
-	titleBar.Size = UDim2.new(1, 0, 0, 34)
-	titleBar.BackgroundColor3 = CONTRST
-	titleBar.BorderSizePixel = 0
-	titleBar.Parent = main
-	Instance.new("UICorner", titleBar).CornerRadius = UDim.new(0, 10)
-	local titleFix = Instance.new("Frame")  -- square off the bottom corners of the bar
-	titleFix.Size = UDim2.new(1, 0, 0, 10)
-	titleFix.Position = UDim2.new(0, 0, 1, -10)
-	titleFix.BackgroundColor3 = CONTRST
-	titleFix.BorderSizePixel = 0
-	titleFix.Parent = titleBar
-
-	local title = Instance.new("TextLabel")
-	title.BackgroundTransparency = 1
-	title.Size = UDim2.new(1, -40, 1, 0)
-	title.Position = UDim2.fromOffset(12, 0)
-	title.Font = Enum.Font.GothamBold
-	title.Text = "VAULT — NOCLIP GUIDE"
-	title.TextColor3 = ACCENT
-	title.TextSize = 13
-	title.TextXAlignment = Enum.TextXAlignment.Left
-	title.Parent = titleBar
-
-	local closeBtn = Instance.new("TextButton")
-	closeBtn.Size = UDim2.fromOffset(22, 22)
-	closeBtn.Position = UDim2.new(1, -27, 0.5, -11)
-	closeBtn.BackgroundColor3 = INLINE
-	closeBtn.Text = "X"
-	closeBtn.TextColor3 = TXT
-	closeBtn.TextSize = 12
-	closeBtn.Font = Enum.Font.GothamBold
-	closeBtn.BorderSizePixel = 0
-	closeBtn.Parent = titleBar
-	Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 6)
-
-	-- content
-	local content = Instance.new("ScrollingFrame")
-	content.Size = UDim2.new(1, -20, 1, -58)
-	content.Position = UDim2.fromOffset(10, 44)
-	content.BackgroundTransparency = 1
-	content.BorderSizePixel = 0
-	content.ScrollBarThickness = 4
-	content.ScrollBarImageColor3 = ACCENT
-	content.CanvasSize = UDim2.new(0, 0, 0, 0)
-	content.AutomaticCanvasSize = Enum.AutomaticSize.Y
-	content.Parent = main
-
-	local layout = Instance.new("UIListLayout", content)
-	layout.Padding = UDim.new(0, 8)
-	layout.SortOrder = Enum.SortOrder.LayoutOrder
-
-	local intro = Instance.new("TextLabel")
-	intro.Size = UDim2.new(1, -8, 0, 0)
-	intro.AutomaticSize = Enum.AutomaticSize.Y
-	intro.BackgroundTransparency = 1
-	intro.Font = Enum.Font.Gotham
-	intro.RichText = true
-	intro.TextWrapped = true
-	intro.TextSize = 12
-	intro.TextColor3 = TXT
-	intro.Text = "Use <font color=\"#8FA7E8\">Phase (Mode: Part)</font> + <font color=\"#8FA7E8\">Speed</font> to clip inside bases and loot them. Read the steps below — get out by rejoining, looting, then phasing back out."
-	intro.Parent = content
-
-	local STEPS = {
-		{ "Step 1", "Set Speed to 1 stud (Speed section). A slow, steady push is what makes the clip consistent — higher speeds usually just launch you instead of letting you slip through." },
-		{ "Step 2", "Keep Phase on Mode: Part and enable it. Walk into the base wall / corner and keep trying until you successfully noclip inside — it can take a few attempts, stay pressed against the wall while it works." },
-		{ "Step 3", "Once you're inside: leave the server and rejoin, then loot the bodies / crates — take everything." },
-		{ "Step 4", "Noclip again (Phase, Mode: Part) to get out of the base." },
-	}
-	for _, st in ipairs(STEPS) do
-		local row = Instance.new("Frame")
-		row.Size = UDim2.new(1, -8, 0, 0)
-		row.AutomaticSize = Enum.AutomaticSize.Y
-		row.BackgroundColor3 = INLINE
-		row.BorderSizePixel = 0
-		row.Parent = content
-		Instance.new("UICorner", row).CornerRadius = UDim.new(0, 6)
-		local pad = Instance.new("UIPadding", row)
-		pad.PaddingTop = UDim.new(0, 7); pad.PaddingBottom = UDim.new(0, 7)
-		pad.PaddingLeft = UDim.new(0, 9); pad.PaddingRight = UDim.new(0, 9)
-		local lbl = Instance.new("TextLabel")
-		lbl.Size = UDim2.new(1, 0, 0, 0)
-		lbl.AutomaticSize = Enum.AutomaticSize.Y
-		lbl.BackgroundTransparency = 1
-		lbl.Font = Enum.Font.Gotham
-		lbl.RichText = true
-		lbl.TextWrapped = true
-		lbl.TextSize = 12
-		lbl.TextColor3 = TXT
-		lbl.Text = "<font color=\"#8FA7E8\"><b>" .. st[1] .. "</b></font>  " .. st[2]
-		lbl.Parent = row
-	end
-
-	local function dragify(handle)
-		local dragging, dragStart, startPos = false, nil, nil
-		handle.InputBegan:Connect(function(input)
-			if input.UserInputType == Enum.UserInputType.MouseButton1 then
-				dragging = true
-				dragStart = input.Position
-				startPos = main.Position
-			end
-		end)
-		handle.InputEnded:Connect(function(input)
-			if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
-		end)
-		bind(UIS.InputChanged:Connect(function(input)
-			if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-				main.Position = UDim2.new(
-					startPos.X.Scale, startPos.X.Offset + (input.Position.X - dragStart.X),
-					startPos.Y.Scale, startPos.Y.Offset + (input.Position.Y - dragStart.Y))
-			end
-		end))
-	end
-	dragify(titleBar)
-
-	closeBtn.MouseButton1Click:Connect(function()
-		local fn = library.config_flags and library.config_flags["gd_open"]
-		if fn then fn(false) else guideGui.Enabled = false end
-	end)
-
-	bind({ Disconnect = function() pcall(function() guideGui:Destroy() end) end })
-
 	-- unload: stop everything and restore what we touched
 	bind({ Disconnect = function()
 		setFreecam(false)
 		setSpeed(false)
-		setPhase(false)
 		setSpider(false)
 	end })
 end
@@ -7295,11 +6011,11 @@ do
 	local column = combatTab:column()
 	local sa = column:section({ name = "Silent Aim" })
 	local ragebotQuickToggle = sa:toggle({ name = "Ragebot (ON / OFF)", flag = "rb_enabled_quick", default = false, tooltip = "Turn Ragebot on from the first Combat page; all Silent Aim toggles are locked ON while active", callback = function(v)
-		local fn = library.config_flags and library.config_flags["rb_enabled"]
-		if fn then fn(v) else flags["rb_enabled"] = v end
+		if OVX.ragebotApply then pcall(OVX.ragebotApply, v) end
 	end })
 	OVX.ragebotQuickSync = function(value)
 		if not ragebotQuickToggle then return end
+		flags["rb_enabled_quick"] = value == true
 		ragebotQuickToggle.state = value == true
 		pcall(ragebotQuickToggle.Update, ragebotQuickToggle)
 	end
@@ -7324,25 +6040,14 @@ do
 	sa:button({ name = "Re-scan Remotes", callback = function()
 		if OVX.saRescan then pcall(OVX.saRescan) end
 	end })
-	sa:dropdown({ name = "Jump To Section", flag = "ui_jump_combat",
-		items = { "Silent Aim", "Weapon Mods", "Triggerbot", "Kill Aura", "Bullet Tracers", "Ragebot", "Tracer Tuning" },
-		default = "Silent Aim" })
-	sa:button({ name = "Open Section", callback = function()
-		pcall(library.focus_section, library, "Combat", flags["ui_jump_combat"] or "Silent Aim")
-	end })
-
-	-- Bow SA shares the same "sa_enabled" toggle as firearms above.
-	-- No separate bow section needed — single flag covers both.
-
 	local wm = column:section({ name = "Weapon Mods" })
-	wm:toggle({ name = "No Recoil", flag = "wm_norecoil", tooltip = "Zeroes gun recoil and bow shake" })
+		wm:toggle({ name = "No Recoil", flag = "wm_norecoil", tooltip = "Zeroes gun recoil" })
 	wm:toggle({ name = "No Spread", flag = "wm_nospread", tooltip = "Zeroes the client spread cone. If hits stop registering, the server re-checks the cone — turn back off." })
 	wm:toggle({ name = "No Sway", flag = "wm_nosway" })
 	wm:toggle({ name = "Instant ADS", flag = "wm_instantads" })
 	wm:toggle({ name = "Auto Fire", flag = "wm_autofire", tooltip = "Makes semi-auto weapons hold-to-fire" })
-	wm:toggle({ name = "Rapid Fire", flag = "wm_rapidfire", tooltip = "Raises gun RPM and clears the bow's 0.3s shot cooldown. Server caps the real cadence." })
+		wm:toggle({ name = "Rapid Fire", flag = "wm_rapidfire", tooltip = "Raises gun RPM; server caps the real cadence." })
 	wm:slider({ name = "Rapid Fire RPM", min = 100, max = 1200, default = 600, interval = 10, flag = "wm_rpm" })
-	wm:toggle({ name = "Instant Charge (Bow)", flag = "wm_instantcharge", default = true, tooltip = "Forces bows to full draw — max speed/damage every shot" })
 	wm:toggle({ name = "Fast Cycle", flag = "wm_fastcycle", tooltip = "Removes bolt/pump/strike delays from the viewmodel — faster follow-up shots (server still caps real cadence)" })
 		:keybind({ name = "Toggle Fast Cycle", flag = "wm_fastcycle_bind", callback = function(v)
 			local fn = library.config_flags and library.config_flags["wm_fastcycle"]
@@ -7361,7 +6066,7 @@ do
 	tb:toggle({ name = "Skip While Holding", flag = "tb_skip_holding", default = true, tooltip = "Pause while your own left button is down so it never fights manual fire" })
 	tb:slider({ name = "Max Distance", min = 0, max = 5000, default = 0, interval = 10, suffix = "m", flag = "tb_max_dist", tooltip = "0 = use Silent Aim range; otherwise cap triggerbot acquisition at this distance" })
 
-	-- second column: kill aura (v2.1 port) + bullet manipulation
+	-- second column: kill aura (v2.1 port)
 	local column2 = combatTab:column()
 	local ka = column2:section({ name = "Kill Aura" })
 	ka:toggle({ name = "Enabled", flag = "ka_enabled", default = true })
@@ -7375,60 +6080,23 @@ do
 	ka:slider({ name = "Swing Speed", min = 1, max = 20, default = 10, interval = 1, flag = "ka_speed" })
 
 
-	-- Bullet Tracers now takes the old Bullet Manipulation slot so it is
-	-- visible on the first Combat page.
-	local bt = column2:section({ name = "Bullet Tracers" })
-	bt:toggle({ name = "Enabled", flag = "sf_tracers_enabled", tooltip = "Muzzle-to-impact Sci-Fi beams; independent of Silent Aim and player ESP tracers" })
-	bt:toggle({ name = "Use Tracer Preset", flag = "sf_tracer_use_preset", default = true, tooltip = "Use one of the eight Sci-Fi presets instead of the custom tracer color" })
-	bt:dropdown({ name = "Tracer Preset", flag = "sf_tracer_preset", items = OVX.sciFiPresetNames, default = "Cyan" })
-	bt:colorpicker({ name = "Tracer Color", flag = "sf_tracer_color", color = c3(0,255,255) })
-	bt:toggle({ name = "Impact Markers", flag = "sf_tracer_impact_enabled", default = true })
-	bt:colorpicker({ name = "Impact Color", flag = "sf_tracer_impact_color", color = c3(0,255,255) })
-	bt:slider({ name = "Impact Size", min = 0.05, max = 3, default = 0.3, interval = 0.05, flag = "sf_tracer_impact_size" })
-	bt:button({ name = "Test Tracer", callback = function()
-		if OVX.fireTestTracer then pcall(OVX.fireTestTracer) end
-	end })
-
 	local column3 = combatTab:column()
 	local rage = column3:section({ name = "Ragebot" })
-	rage:toggle({ name = "Ragebot", flag = "rb_enabled", tooltip = "Locks all Silent Aim toggles ON, forces Head, disables Bow Lead & Arc, and removes the FOV limit", callback = function(v)
+	rage:toggle({ name = "Ragebot", flag = "rb_enabled", tooltip = "Locks all Silent Aim toggles ON, forces Head, and uses INF acquisition", callback = function(v)
 		if OVX.ragebotApply then pcall(OVX.ragebotApply, v) end
 	end })
 	rage:slider({ name = "Hit Distance", min = 0, max = 5000, default = 0, interval = 10, suffix = "m", flag = "rb_max_dist", tooltip = "0 = unlimited; otherwise the maximum Ragebot acquisition distance" })
-	rage:slider({ name = "FOV Radius", min = 1000, max = 50000, default = 10000, interval = 100, suffix = " px", flag = "rb_fov_radius", tooltip = "Extended acquisition radius; Ragebot also ranks behind-camera targets by 3D distance" })
-	rage:label("FOV: 1000+ px • ALL HEADS • SA + Gun Mods + Triggerbot locked ON")
-	rage:label("Max Rapid Fire 1200 RPM • Bow Lead & Arc forced OFF")
+	rage:label("FOV: INF • ALL HEADS • SA + Gun Mods + Triggerbot locked ON")
+	rage:label("Max Rapid Fire 1200 RPM • pure embedded PSilent rewrite")
 	rage:button({ name = "Re-apply Ragebot State", callback = function()
 		if flags["rb_enabled"] and OVX.ragebotSync then pcall(OVX.ragebotSync) end
 	end })
-	rage:button({ name = "Back To Silent Aim", callback = function()
-		pcall(library.focus_section, library, "Combat", "Silent Aim")
-	end })
-	local btTune = column3:section({ name = "Tracer Tuning" })
-	btTune:slider({ name = "Beam Width", min = 0.02, max = 3, default = 0.2, interval = 0.02, flag = "sf_tracer_width" })
-	btTune:slider({ name = "Beam Lifetime", min = 0.03, max = 3, default = 0.25, interval = 0.01, suffix = "s", flag = "sf_tracer_lifetime" })
-	btTune:slider({ name = "Beam Segments", min = 1, max = 20, default = 1, interval = 1, flag = "sf_tracer_segments" })
-	btTune:slider({ name = "Beam Glow", min = 0, max = 10, default = 5, interval = 1, suffix = "/10", flag = "sf_tracer_glow" })
-	btTune:slider({ name = "Light Influence", min = 0, max = 10, default = 0, interval = 1, suffix = "/10", flag = "sf_tracer_light_influence" })
-	btTune:toggle({ name = "Face Camera", flag = "sf_tracer_face_camera", default = true })
-	btTune:slider({ name = "Max Active Beams", min = 1, max = 80, default = 24, interval = 1, flag = "sf_tracer_max" })
-	btTune:slider({ name = "Tracer Range", min = 50, max = 5000, default = 1000, interval = 50, suffix = "m", flag = "sf_tracer_range" })
-	btTune:toggle({ name = "Use Muzzle Position", flag = "sf_tracer_use_muzzle", default = true })
-	btTune:toggle({ name = "Follow Silent Aim Target", flag = "sf_tracer_follow_sa", default = true })
-	btTune:toggle({ name = "Raycast Impacts", flag = "sf_tracer_raycast", default = true })
-	btTune:toggle({ name = "Include Bow Shots", flag = "sf_tracer_include_bow", default = true })
-	btTune:toggle({ name = "Double-Gun Tracers", flag = "sf_tracer_double_gun", default = true })
 end
 
-	-- Bullet Manipulation was removed from the UI, but its logic and config
-	-- flags stay available for configs and console use.
+	-- Hidden gun-packet flags stay available for configs and console use.
 	registerFlagSetter("bp_enabled", function(value) flags["bp_enabled"] = value end)
-	registerFlagSetter("bp_desync", function(value) flags["bp_desync"] = value end)
 	registerFlagSetter("bp_max_offset", function(value) flags["bp_max_offset"] = value end)
 	registerFlagSetter("pkt_nospread", function(value) flags["pkt_nospread"] = value end)
-	registerFlagSetter("sa_bow_lead", function(value) flags["sa_bow_lead"] = value end)
-	registerFlagSetter("sa_bow_enabled", function(value) flags["sa_bow_enabled"] = enforceRagebotFlag("sa_bow_enabled", value) end)
-	registerFlagSetter("traj_arc", function(value) flags["traj_arc"] = value end)
 
 -- ——— SOUNDS (v2.1 port: hitsounds on the server's HitMarker) ———
 local soundsTab = window:tab({ name = "Sounds" })
@@ -7492,20 +6160,9 @@ do
 	section:toggle({ name = "3D Preview On Self", flag = "esp_self_preview_3d", default = true, callback = update_elements, tooltip = "Live box, highlight and health/name billboard attached to your own character" })
 	section:slider({ name = "3D Preview Rate", min = 2, max = 20, default = 10, interval = 1, suffix = " Hz", flag = "esp_self_preview_hz" })
 	section:button({ name = "Refresh ESP Previews", callback = update_elements })
-	section:dropdown({ name = "Jump To Section", flag = "ui_jump_visuals",
-		items = { "Player ESP", "Extra", "ESP Fine Tuning", "Hand Chams", "Gun Chams", "Viewmodel Shared", "Skin Changer", "Skin Diagnostics" },
-		default = "Player ESP" })
-	section:button({ name = "Open Section", callback = function()
-		pcall(library.focus_section, library, "Visuals", flags["ui_jump_visuals"] or "Player ESP")
-	end })
-
 	-- extra ESP controls not mirrored in the preview panel
 	local column2 = visualsTab:column()
 	local extra = column2:section({ name = "Extra" })
-
-	extra:toggle({ name = "Tracers", flag = "esp_tracers" })
-		:colorpicker({ name = "Tracer Color", flag = "esp_tracer_color", color = c3(255,255,255) })
-	extra:dropdown({ name = "Tracer Origin", flag = "esp_tracer_origin", items = { "Bottom", "Center", "Top" }, default = "Bottom" })
 
 	extra:toggle({ name = "View Angle", flag = "esp_view_angle" })
 		:colorpicker({ name = "VA Color", flag = "esp_viewangle_color", color = c3(255,255,255) })
@@ -7659,7 +6316,7 @@ do
 	afSec:slider({ name = "Swing Speed", min = 1, max = 20, default = 10, interval = 1, flag = "af_speed" })
 end
 
--- ——— MISC (Speed / Phase / Spider / Freecam — vape v4 port) ———
+-- ——— MISC (Speed / Spider / Freecam — vape v4 port) ———
 local miscTab = window:tab({ name = "Misc" })
 do
 	local column = miscTab:column()
@@ -7681,21 +6338,8 @@ do
 		if flags["spd_enabled"] then setSpeed(false); setSpeed(true) end
 	end })
 
-	local phSec = column:section({ name = "Phase" })
-	phSec:toggle({ name = "Enabled", flag = "ph_enabled", tooltip = "Phase/Clip through walls. (Hold Left Shift to use Phase over Spider)", callback = function(v)
-		if setPhase then pcall(setPhase, v) end
-	end })
-		:keybind({ name = "Phase", flag = "ph_bind", callback = function(v)
-			local fn = library.config_flags and library.config_flags["ph_enabled"]
-			if fn then fn(v) end
-		end })
-	phSec:dropdown({ name = "Mode", flag = "ph_mode", items = { "Part", "Character", "CFrame", "Motor", "FFlag" }, default = "Part", callback = function()
-		if flags["ph_enabled"] then setPhase(false); setPhase(true) end
-	end })
-	phSec:slider({ name = "Wall Size", min = 1, max = 20, default = 5, interval = 1, suffix = " studs", flag = "ph_wall" })
-
 	local spSec2 = column:section({ name = "Spider" })
-	spSec2:toggle({ name = "Enabled", flag = "sp_enabled", tooltip = "Lets you climb up obstacles. (Hold Left Shift to use Phase over Spider)", callback = function(v)
+	spSec2:toggle({ name = "Enabled", flag = "sp_enabled", tooltip = "Lets you climb up obstacles.", callback = function(v)
 		if setSpider then pcall(setSpider, v) end
 	end })
 		:keybind({ name = "Spider", flag = "sp_bind", callback = function(v)
@@ -7722,45 +6366,11 @@ do
 	end })
 	fcSec:slider({ name = "Speed", min = 1, max = 150, default = 50, interval = 1, suffix = " studs", flag = "fc_speed" })
 
-	-- draggable guide window (toggle to open/close)
-	local gdCol = miscTab:column()
-	local gd = gdCol:section({ name = "Noclip Guide" })
-	gd:toggle({ name = "Guide UI", flag = "gd_open", default = false, callback = function(v)
-		guideGui.Enabled = v
-	end })
-
-	local uiSec = gdCol:section({ name = "Interface" })
+	local uiSec = column:section({ name = "Interface" })
 	uiSec:label("Window size, menu key, themes and configs are in Settings.")
 
 
-	-- desync (v2.1 port) + overlay windows
-	local dcol = miscTab:column()
-	local dsSec = dcol:section({ name = "Desync" })
-	dsSec:toggle({ name = "Enabled", flag = "ds_enabled" })
-		:keybind({ name = "Desync", flag = "ds_bind", callback = function(v)
-			local fn = library.config_flags and library.config_flags["ds_enabled"]
-			if fn then fn(v) end
-		end })
-	dsSec:dropdown({ name = "Preset", flag = "ds_preset",
-		items = { "Semi-underground (best)", "Deep underground", "Rotation only (stealth)" },
-		default = "Semi-underground (best)", callback = function(v)
-			if OVX.desyncPreset then pcall(OVX.desyncPreset, v) end
-		end })
-	dsSec:toggle({ name = "Position Spoof", flag = "ds_pos", default = true, enabled = true })
-	dsSec:toggle({ name = "Rotation Spoof", flag = "ds_rot", default = true, enabled = true })
-	dsSec:toggle({ name = "Visualizer", flag = "ds_vis", tooltip = "Shows a ghost clone where the server sees you" })
-	dsSec:toggle({ name = "Fake Anim", flag = "ds_anim" })
-	dsSec:toggle({ name = "Freeze Anim", flag = "ds_animfreeze" })
-	dsSec:toggle({ name = "Velocity Poison", flag = "ds_velocity", tooltip = "Rubberband risk — OFF by default" })
-	dsSec:dropdown({ name = "Vel Type", flag = "ds_veltype", items = { "low", "high", "high y", "limit" }, default = "low" })
-	dsSec:slider({ name = "Offset X", min = -10, max = 10, default = 0, interval = 0.1, flag = "ds_ox" })
-	dsSec:slider({ name = "Offset Y", min = -10, max = 10, default = -2.4, interval = 0.1, flag = "ds_oy" })
-	dsSec:slider({ name = "Offset Z", min = -10, max = 10, default = 0, interval = 0.1, flag = "ds_oz" })
-	dsSec:slider({ name = "Rotation X", min = -180, max = 180, default = 90, interval = 1, suffix = "°", flag = "ds_rx" })
-	dsSec:slider({ name = "Rotation Y", min = -180, max = 180, default = 0, interval = 1, suffix = "°", flag = "ds_ry" })
-	dsSec:slider({ name = "Rotation Z", min = -180, max = 180, default = 0, interval = 1, suffix = "°", flag = "ds_rz" })
-
-	local ovSec = dcol:section({ name = "Overlays" })
+	local ovSec = column:section({ name = "Overlays" })
 	ovSec:toggle({ name = "Crosshair Info", flag = "hud_targetinfo", default = true, enabled = true })
 	ovSec:toggle({ name = "Inventory Viewer", flag = "invwin_enabled" })
 	ovSec:toggle({ name = "Staff Panel", flag = "staffwin_enabled", default = true, enabled = true })
@@ -7940,10 +6550,6 @@ do
 	end })
 	configs:button({ name = "Refresh Config List", callback = function()
 		pcall(function() cfgDropdown:Refresh(listConfigs()); cfgDropdown:Update() end)
-	end })
-	configs:dropdown({ name = "Jump To Section", flag = "ui_jump_settings", items = { "Configs", "Interface", "UI Essentials" }, default = "Configs" })
-	configs:button({ name = "Open Section", callback = function()
-		pcall(library.focus_section, library, "Settings", flags["ui_jump_settings"] or "Configs")
 	end })
 	configs:label("Configs are stored in OVX/Configs as JSON.")
 
@@ -8262,8 +6868,8 @@ vaultHandle = {
 	window = window,
 	unload = fullUnload,
 	focus = function(a, b, c)
-		if a == vaultHandle then return library.focus_section(library, b, c) end
-		return library.focus_section(library, a, b)
+		if a == vaultHandle then return library.scroll_to_section(library, b, c) end
+		return library.scroll_to_section(library, a, b)
 	end,
 	config = function(a, b)
 		if a == vaultHandle then return OVX.configLoad(b) end
@@ -8292,7 +6898,7 @@ getgenv().Vault = vaultHandle
 
 pcall(function() window.set_menu_visibility(true) end)
 
-print("[OVX] loaded — silent aim + Ragebot + triggerbot + bullet tracers + Sci-Fi hand/gun chams + skin changer + v5 gradient ESP + 2D/3D ESP previews + Settings/configs + ESP/world + speed/phase/spider/freecam + kill aura + autofarm + hitsounds + trajectory arc + desync + inventory viewer + crosshair info + staff panel")
+print("[OVX] loaded — embedded PSilent + Ragebot + triggerbot + Sci-Fi hand/gun chams + skin changer + v5 gradient ESP + 2D/3D ESP previews + Settings/configs + ESP/world + speed/spider/freecam + kill aura + autofarm + hitsounds + inventory viewer + crosshair info + staff panel")
 
 -- external state bridge (for console/state analysis + remote toggling)
 getgenv().__ovx = { flags = flags, library = library, setf = library.config_flags, window = window, state = OVX }
