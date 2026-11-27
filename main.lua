@@ -183,12 +183,14 @@ do
 
     function utility:OVXMakeSVGradient(parent, hue)
         if not parent then return {} end
+        pcall(function() parent.Transparency = 0 end)
         local strips = {}
-        for row = 0, 9 do
-            for col = 0, 9 do
-                local sat, val = col / 9, 1 - row / 9
-                local strip = utility:Draw("Square", v2new(col * 10, row * 10), {
-                    Size = v2new(10, 10), Color = c3hsv(hue, sat, val),
+        for row = 0, 19 do
+            for col = 0, 19 do
+                local sat, val = col / 19, 1 - row / 19
+                local strip = utility:Draw("Square", v2new(col * 5, row * 5), {
+                    Size = v2new(5, 5), Color = c3hsv(hue, sat, val),
+                    Filled = true, Thickness = 0, Transparency = 1,
                     ZIndex = 10^4 - 1, Parent = parent,
                 })
                 strip._s, strip._v = sat, val
@@ -206,7 +208,9 @@ do
             local t = i / 19
             local color = trans and c3rgb(math.floor(255 * (1 - t)), math.floor(255 * (1 - t)), math.floor(255 * (1 - t))) or c3hsv(t, 1, 1)
             local strip = utility:Draw("Square", v2new(1, 1 + i * 5), {
-                Size = v2new(5, 5), Color = color, ZIndex = 10^4 - 1, Parent = parent,
+                Size = v2new(5, 5), Color = color,
+                Filled = true, Thickness = 0, Transparency = 1,
+                ZIndex = 10^4 - 1, Parent = parent,
             })
             strips[#strips + 1] = strip
         end
@@ -368,7 +372,46 @@ do
                     for _, stripList in ipairs({cpdropframe_color._ovxSvStrips or {}, cpdropframe_hue._ovxBarStrips or {}, cpdropframe_trans._ovxBarStrips or {}}) do
                         for _, strip in ipairs(stripList) do self.instances[#self.instances + 1] = strip end
                     end
+                    self._ovxStripRoots = {cpdropframe_color, cpdropframe_hue, cpdropframe_trans}
 ]==])
+	patchOnce([==[                function colorpicker.Close(self)
+                    if #self.instances > 0 then
+                        for i, v in pairs(self.instances) do
+                            v.Remove()
+                        end
+
+                        self.instances = {}
+
+                        window.shit.colorpicker = nil
+                    end
+                end
+]==], [==[                function colorpicker.Close(self)
+                    for _, v in pairs(self.instances or {}) do
+                        pcall(function() v.Remove() end)
+                    end
+                    for _, root in ipairs(self._ovxStripRoots or {}) do
+                        root._ovxSvStrips = nil
+                        root._ovxBarStrips = nil
+                    end
+                    self._ovxStripRoots = nil
+                    self.instances = {}
+                    if window.shit.colorpicker == self then window.shit.colorpicker = nil end
+                    local function closeOthers()
+                        local s = window.shit or {}
+                        if s.dropdown and s.dropdown.Close then pcall(s.dropdown.Close, s.dropdown) end
+                        if s.textbox and s.textbox.Stop then pcall(s.textbox.Stop, s.textbox) end
+                        if s.keybind and s.keybind.Close then pcall(s.keybind.Close, s.keybind) end
+                    end
+                    if type(task) == "table" and type(task.defer) == "function" then
+                        pcall(task.defer, closeOthers)
+                    elseif type(task) == "table" and type(task.delay) == "function" then
+                        pcall(task.delay, 0, closeOthers)
+                    else
+                        closeOthers()
+                    end
+                end
+]==])
+
 	patchAll('colorpicker.instances[4].Color = c3hsv(py, 1, 1)',
 		'colorpicker.instances[4].Color = c3hsv(py, 1, 1); utility:OVXSetHue(colorpicker.instances[4], py)')
 
@@ -496,6 +539,7 @@ setDefaultFlag("ds_ry", 0)
 setDefaultFlag("ds_rz", 0)
 setDefaultFlag("tb_max_dist", 0)
 setDefaultFlag("rb_enabled", false)
+setDefaultFlag("rb_enabled_quick", false)
 setDefaultFlag("rb_max_dist", 0)
 setDefaultFlag("esp_preview_2d", true)
 setDefaultFlag("esp_self_preview_3d", true)
@@ -505,8 +549,8 @@ setDefaultFlag("cfg_selected", "Default")
 setDefaultFlag("cfg_auto_load", false)
 setDefaultFlag("ui_modal_guard", true)
 setDefaultFlag("ui_menu_key", { active = false, mode = "toggle", key = "Insert" })
-setDefaultFlag("ui_jump_combat", "Ragebot")
-setDefaultFlag("ui_jump_visuals", "Gun Chams")
+setDefaultFlag("ui_jump_combat", "Silent Aim")
+setDefaultFlag("ui_jump_visuals", "Player ESP")
 setDefaultFlag("ui_jump_settings", "Configs")
 setDefaultFlag("ui_accent", Color3.fromRGB(155, 105, 230))
 setDefaultFlag("ui_background", Color3.fromRGB(20, 20, 27))
@@ -980,14 +1024,19 @@ local function attachTab(tab)
 	tab._compatColumnCount = 0
 	tab._compatColumns = { {}, {} }
 	tab._compatScroll = 0
+	local sectionCounter = 0
 
 	function tab:column()
 		tab._compatColumnCount = tab._compatColumnCount + 1
+		local columnIndex = tab._compatColumnCount
 		local side = (tab._compatColumnCount % 2 == 1) and "left" or "right"
 		local column = {}
 		function column:section(info)
 			info = info or {}
 			local section = tab:Section({ name = info.name or "Section", side = side })
+			sectionCounter = sectionCounter + 1
+			section._compatColumnIndex = columnIndex
+			section._compatOrder = sectionCounter
 			attachSection(section, tab)
 			refreshSection(section)
 			return section
@@ -1009,7 +1058,7 @@ local function attachTab(tab)
 			local list = cols[sn] or {}
 			local count = #list
 			if count > 0 then
-				local start = (self._compatScroll % count) + 1
+				local start = math.max(1, math.min(self._compatScroll + 1, count))
 				local used = 0
 				for offset = 0, count - 1 do
 					local idx = ((start - 1 + offset) % count) + 1
@@ -1140,24 +1189,36 @@ local function rebalanceAllTabs()
 		-- get height-aware packing + wheel scrolling.
 		tab._compatScrollable = (tonumber(tab._compatColumnCount) or 0) > 2
 		if tab._compatScrollable then
-			local work = {}
+			local groups, byColumn = {}, {}
 			for index, section in ipairs(tab.sections or {}) do
 				if not section.rna then
-					work[#work + 1] = { i = index, h = sectionHeight(section), section = section }
+					local item = { i = index, h = sectionHeight(section), section = section }
+					local key = section._compatColumnIndex or 0
+					local group = byColumn[key]
+					if not group then
+						group = { i = index, h = 0, items = {} }
+						byColumn[key] = group
+						groups[#groups + 1] = group
+					end
+					group.h = group.h + item.h
+					group.items[#group.items + 1] = item
 				end
 			end
-			-- Keep authored order so the first page contains the primary
-			-- sections; balance only by accumulated height.
+			table.sort(groups, function(a, b) return a.i < b.i end)
+			-- Pack whole authored columns, never splitting two adjacent
+			-- sections such as Hand Chams / Gun Chams into different sides.
 			local columns, heights = { {}, {} }, { 0, 0 }
-			for _, item in ipairs(work) do
+			for _, group in ipairs(groups) do
 				local sn = heights[1] <= heights[2] and 1 or 2
 				local other = sn == 1 and 2 or 1
-				if heights[sn] + item.h > maxH and heights[other] + item.h <= maxH then
+				if heights[sn] + group.h > maxH and heights[other] + group.h <= maxH then
 					sn = other
 				end
-				columns[sn][#columns[sn] + 1] = item
-				heights[sn] = heights[sn] + item.h
-				item.section.side = sn == 1 and "left" or "right"
+				for _, item in ipairs(group.items) do
+					columns[sn][#columns[sn] + 1] = item
+					heights[sn] = heights[sn] + item.h
+					item.section.side = sn == 1 and "left" or "right"
+				end
 			end
 			for sn = 1, 2 do
 				table.sort(columns[sn], function(a, b) return a.i < b.i end)
@@ -1287,15 +1348,6 @@ function library:window(info)
 	nativeWindow:Connect({ con = "fade", callback = function(showing)
 		setMenuVisible(showing, flags["ui_free_mouse"] ~= false)
 	end })
-	function nativeWindow:_compatCloseTransients(includeKeybind)
-		local s = self.shit or {}
-		pcall(function() if s.dropdown and s.dropdown.Close then s.dropdown:Close() end end)
-		pcall(function() if s.textbox and s.textbox.Stop then s.textbox:Stop() end end)
-		pcall(function() if s.colorpicker and s.colorpicker.Close then s.colorpicker:Close() end end)
-		if includeKeybind ~= false then
-			pcall(function() if s.keybind and s.keybind.Close then s.keybind:Close() end end)
-		end
-	end
 	local function deferModal(fn)
 		if type(task) == "table" and type(task.defer) == "function" then
 			pcall(task.defer, fn)
@@ -1304,6 +1356,19 @@ function library:window(info)
 		else
 			pcall(fn)
 		end
+	end
+	function nativeWindow:_compatCloseTransients(includeKeybind)
+		local function closeNow()
+			local s = self.shit or {}
+			pcall(function() if s.dropdown and s.dropdown.Close then s.dropdown:Close() end end)
+			pcall(function() if s.textbox and s.textbox.Stop then s.textbox:Stop() end end)
+			pcall(function() if s.colorpicker and s.colorpicker.Close then s.colorpicker:Close() end end)
+			if includeKeybind ~= false then
+				pcall(function() if s.keybind and s.keybind.Close then s.keybind:Close() end end)
+			end
+		end
+		closeNow()
+		deferModal(closeNow)
 	end
 	utility:Connect(uis.InputBegan, function(input)
 		if not frame.Visible or flags["ui_modal_guard"] == false then return end
@@ -1358,11 +1423,11 @@ function library:window(info)
 	end)
 
 	-- Long tabs (Misc/Exploit) are scrollable instead of drawing below the frame.
-	utility:Connect(uis.InputBegan, function(input)
+	utility:Connect(uis.InputChanged, function(input)
 		if not frame.Visible or input.UserInputType ~= Enum.UserInputType.MouseWheel then return end
 		if not utility:MouseOverDrawing(frame) then return end
 		local tab = nativeWindow.sshit
-		if not (tab and tab._compatApplyScroll) then return end
+		if not (tab and tab._compatScrollable and tab._compatApplyScroll) then return end
 		local delta = 0
 		pcall(function() delta = input.Position.Z or 0 end)
 		local step = delta > 0 and -1 or (delta < 0 and 1 or 0)
@@ -1831,6 +1896,7 @@ do
 		for flag, value in pairs(ragebotRequired) do
 			setCompatFlag(flag, value, true)
 		end
+		if OVX.ragebotQuickSync then pcall(OVX.ragebotQuickSync, true) end
 	end
 
 	function OVX.ragebotApply(on)
@@ -1842,6 +1908,7 @@ do
 			end
 		end
 		flags["rb_enabled"] = on
+		if OVX.ragebotQuickSync then pcall(OVX.ragebotQuickSync, on) end
 		if on then
 			OVX.ragebotSync()
 		elseif OVX.ragebotRestore then
@@ -2205,7 +2272,7 @@ do
 		viewRefreshLock = true
 		local ok = pcall(function()
 			OVX.refreshViewModels(true)
-			if OVX.sciFiApply then pcall(OVX.sciFiApply) end
+			if OVX.sciFiApply then pcall(OVX.sciFiApply, true) end
 			if OVX.skinReapply then pcall(OVX.skinReapply) end
 		end)
 		viewRefreshLock = false
@@ -2241,7 +2308,7 @@ do
 		bindCameraEvents()
 		OVX.queueViewRefresh()
 	end))
-	OVX.refreshViewModels()
+	OVX.refreshViewModels(true)
 
 	function OVX.finalizeViewmodelCleanup()
 		OVX.viewmodelUnloaded = true
@@ -2559,8 +2626,8 @@ do
 			part.Reflectance = reflectance
 		end)
 	end
-	function OVX.sciFiApply()
-		OVX.refreshViewModels()
+	function OVX.sciFiApply(skipRefresh)
+		if skipRefresh ~= true then OVX.refreshViewModels(true) end
 		local roots = OVX.viewModels or {}
 		local limit = flags["sf_double_gun_fix"] ~= false and #roots or math.min(1, #roots)
 		local parts = {}
@@ -2571,7 +2638,7 @@ do
 		end
 	end
 	function OVX.sciFiRestore(reapplySkin)
-		OVX.refreshViewModels()
+		OVX.refreshViewModels(true)
 		for part in pairs(sciFiAppliedParts) do OVX.restoreVmOriginal(part) end
 		table.clear(sciFiAppliedParts)
 		if reapplySkin ~= false and OVX.skinReapply then pcall(OVX.skinReapply) end
@@ -2805,7 +2872,7 @@ do
 			and not string.find(wanted, normalize(current), 1, true) then
 			return false
 		end
-		OVX.refreshViewModels()
+		OVX.refreshViewModels(true)
 		local asset, assetParts = findAsset(skinName, "skin")
 		local parts = {}
 		local maxDepth = clamp(tonumber(flags["skin_asset_depth"]) or 5, 2, 8)
@@ -7108,6 +7175,15 @@ local combatTab = window:tab({ name = "Combat" })
 do
 	local column = combatTab:column()
 	local sa = column:section({ name = "Silent Aim" })
+	local ragebotQuickToggle = sa:toggle({ name = "Ragebot (ON / OFF)", flag = "rb_enabled_quick", default = false, tooltip = "Turn Ragebot on from the first Combat page; all Silent Aim toggles are locked ON while active", callback = function(v)
+		local fn = library.config_flags and library.config_flags["rb_enabled"]
+		if fn then fn(v) else flags["rb_enabled"] = v end
+	end })
+	OVX.ragebotQuickSync = function(value)
+		if not ragebotQuickToggle then return end
+		ragebotQuickToggle.state = value == true
+		pcall(ragebotQuickToggle.Update, ragebotQuickToggle)
+	end
 	sa:toggle({ name = "Enabled", flag = "sa_enabled", default = true })
 		:keybind({ name = "Silent Aim", flag = "sa_bind", callback = function(v)
 			local fn = library.config_flags and library.config_flags["sa_enabled"]
@@ -7133,9 +7209,9 @@ do
 	end })
 	sa:dropdown({ name = "Jump To Section", flag = "ui_jump_combat",
 		items = { "Silent Aim", "Weapon Mods", "Triggerbot", "Kill Aura", "Bullet Tracers", "Ragebot", "Tracer Tuning" },
-		default = "Ragebot" })
+		default = "Silent Aim" })
 	sa:button({ name = "Open Section", callback = function()
-		pcall(library.focus_section, library, "Combat", flags["ui_jump_combat"] or "Ragebot")
+		pcall(library.focus_section, library, "Combat", flags["ui_jump_combat"] or "Silent Aim")
 	end })
 
 	-- Bow SA shares the same "sa_enabled" toggle as firearms above.
@@ -7207,6 +7283,9 @@ do
 	rage:button({ name = "Re-apply Ragebot State", callback = function()
 		if flags["rb_enabled"] and OVX.ragebotSync then pcall(OVX.ragebotSync) end
 	end })
+	rage:button({ name = "Back To Silent Aim", callback = function()
+		pcall(library.focus_section, library, "Combat", "Silent Aim")
+	end })
 	local btTune = column3:section({ name = "Tracer Tuning" })
 	btTune:slider({ name = "Beam Width", min = 0.02, max = 3, default = 0.2, interval = 0.02, flag = "sf_tracer_width" })
 	btTune:slider({ name = "Beam Lifetime", min = 0.03, max = 3, default = 0.25, interval = 0.01, suffix = "s", flag = "sf_tracer_lifetime" })
@@ -7267,13 +7346,6 @@ do
 	section:toggle({ name = "Enabled", flag = "Enabled", default = true, callback = update_elements })
 	section:toggle({ name = "Team Check", flag = "esp_team_check" })
 	section:slider({ name = "Max Distance", min = 0, max = 2000, default = 0, interval = 10, suffix = "m", flag = "esp_max_dist" })
-	section:dropdown({ name = "Jump To Section", flag = "ui_jump_visuals",
-		items = { "Player ESP", "Extra", "ESP Fine Tuning", "Gun Chams", "Hand Chams", "Viewmodel Shared", "Skin Changer", "Skin Diagnostics" },
-		default = "Gun Chams" })
-	section:button({ name = "Open Section", callback = function()
-		pcall(library.focus_section, library, "Visuals", flags["ui_jump_visuals"] or "Gun Chams")
-	end })
-
 	section:toggle({ name = "Boxes", flag = "Boxes", default = true, callback = update_elements })
 		:colorpicker({ name = "Box Color", flag = "Box_Color", color = c3(255,255,255), callback = update_elements })
 	section:dropdown({ name = "Box Type", flag = "Box_Type", items = { "Full", "Corner" }, default = "Full", callback = update_elements })
@@ -7300,6 +7372,12 @@ do
 	section:toggle({ name = "3D Preview On Self", flag = "esp_self_preview_3d", default = true, callback = update_elements, tooltip = "Live box, highlight and health/name billboard attached to your own character" })
 	section:slider({ name = "3D Preview Rate", min = 2, max = 20, default = 10, interval = 1, suffix = " Hz", flag = "esp_self_preview_hz" })
 	section:button({ name = "Refresh ESP Previews", callback = update_elements })
+	section:dropdown({ name = "Jump To Section", flag = "ui_jump_visuals",
+		items = { "Player ESP", "Extra", "ESP Fine Tuning", "Hand Chams", "Gun Chams", "Viewmodel Shared", "Skin Changer", "Skin Diagnostics" },
+		default = "Player ESP" })
+	section:button({ name = "Open Section", callback = function()
+		pcall(library.focus_section, library, "Visuals", flags["ui_jump_visuals"] or "Player ESP")
+	end })
 
 	-- extra ESP controls not mirrored in the preview panel
 	local column2 = visualsTab:column()
@@ -7343,7 +7421,7 @@ do
 	hands:slider({ name = "Hand Transparency", min = 0, max = 10, default = 0, interval = 1, suffix = "/10", flag = "sf_hand_transparency" })
 	hands:slider({ name = "Hand Reflectance", min = 0, max = 10, default = 2, interval = 1, suffix = "/10", flag = "sf_hand_reflectance" })
 
-	local guns = column3:section({ name = "Gun Chams" })
+	local guns = column4:section({ name = "Gun Chams" })
 	guns:toggle({ name = "Gun Chams", flag = "sf_gun_enabled" })
 	guns:dropdown({ name = "Gun Material", flag = "sf_gun_material", items = OVX.sciFiMaterials, default = "ForceField" })
 	guns:toggle({ name = "Use Gun Preset", flag = "sf_gun_use_preset", default = true })
