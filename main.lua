@@ -460,13 +460,9 @@ local function setDefaultFlag(name, value)
 end
 setDefaultFlag("sa_enabled", true)
 setDefaultFlag("sa_force_head", false)
-setDefaultFlag("sa_instant_hit", false)
-setDefaultFlag("wm_range", true)
+setDefaultFlag("sa_instant_hit", true)
 setDefaultFlag("sa_arc", true)
-setDefaultFlag("sa_prediction", true)
-setDefaultFlag("sa_bend", false)
-setDefaultFlag("sa_manip_headshot", true)
-setDefaultFlag("sa_bend_range", 4)
+setDefaultFlag("wm_range", true)
 setDefaultFlag("sa_target_npc", true)
 setDefaultFlag("sa_snapline_npc", true)
 setDefaultFlag("tb_npc", true)
@@ -4174,19 +4170,20 @@ do
 		and hookmetamethod and newcclosure and getnamecallmethod then
 		local firingOwn = false
 		local hasCheckcaller = type(checkcaller) == "function"
-		-- ============ BULLET MANIP (ported from "Bullet manipulation.txt") ============
-		-- Everything the embedded PSilent needs so a rewritten shot still lands
-		-- at long range / around cover, instead of flying straight and dropping
-		-- underneath the target. Uses only attributes the game itself reads
-		-- (BulletSpeed / BulletGravity) plus the target's AssemblyLinearVelocity.
+		-- ============ BALLISTICS SOLVER (long-range drop compensation) ============
+		-- The gun's sim (see FireARmsClient: projectile integrated every frame
+		-- with constant gravity, no drag) matches an analytic low-angle lob.
+		-- Solving it lets a rewritten silent shot land ON the target at any
+		-- distance instead of dropping under it — instant hit claim, same as
+		-- vanilla. Speed mirrors readGun(): BulletSpeed attribute x the
+		-- Att_Muzzle -> FirearmsAttachments -> Speed multiplier; gravity is the
+		-- BulletGravity attribute (default 60 in the game).
 		local function gunSpeedGravity()
 			local tool = lp.Character and lp.Character:FindFirstChildOfClass("Tool")
 			local speed = tool and tonumber(tool:GetAttribute("BulletSpeed")) or nil
 			local gravity = tool and tonumber(tool:GetAttribute("BulletGravity")) or nil
 			if not (speed and speed > 1) then speed = 1000 end
 			if not (gravity and gravity >= 0) then gravity = 60 end
-			-- the game applies a muzzle-attachment "Speed" multiplier on top of
-			-- the tool attribute; match it so the arc/flight time are exact
 			local muzzleName = tool and tool:GetAttribute("Att_Muzzle")
 			if muzzleName then
 				local attachFolder = RepStorage:FindFirstChild("FirearmsAttachments")
@@ -4196,146 +4193,22 @@ do
 			end
 			return speed, gravity
 		end
-		-- Low-angle ballistic arc: the direction to fire so the projectile,
-		-- pulled down by gravity, lands exactly on `to` from `from`. Also
-		-- returns the flight time so the hit claim can land when the
-		-- simulated bullet does. Falls back to straight line + flat time.
+		-- Low-angle direction from `from` to `to` for a speed/gravity projectile.
+		-- Falls back to a straight line when gravity is 0, the target is
+		-- effectively vertical-overhead, or the shot physically can't reach.
 		local function solveArcDir(from, to, speed, gravity)
 			local diff = to - from
 			local flat = Vector3.new(diff.X, 0, diff.Z)
 			local x, y = flat.Magnitude, diff.Y
-			if x < 0.01 then return diff.Unit, 0.01 end
-			if gravity <= 0 then return diff.Unit, diff.Magnitude / math.max(speed, 1) end
+			if x < 0.01 or gravity <= 0 then return diff.Unit end
 			local v2 = speed * speed
 			local root = v2 * v2 - gravity * (gravity * x * x + 2 * y * v2)
-			if root < 0 then return diff.Unit, x / math.max(speed, 1) end
+			if root < 0 then return diff.Unit end
 			local ang = math.atan((v2 - math.sqrt(root)) / (gravity * x))
-			local dir = (flat.Unit * math.cos(ang) + Vector3.new(0, math.sin(ang), 0)).Unit
-			return dir, x / math.max(speed * math.cos(ang), 1)
-		end
-		-- Aimbot-style prediction: sample the part's velocity from POSITION DELTAS
-		-- (lerped), not AssemblyLinearVelocity — the latter is unreliable on
-		-- server-owned rigs / NPCs and poisons the lead. Samples must be refreshed
-		-- at >= ~30 Hz to converge; the SA scan runs at the user's chosen Hz.
-		local velSamples = setmetatable({}, { __mode = "k" })
-		local function sampleVelocity(part)
-			local now = os.clock()
-			local entry = velSamples[part]
-			if not entry then
-				velSamples[part] = { pos = part.Position, t = now, vel = Vector3.new(0, 0, 0) }
-				return velSamples[part].vel
-			end
-			local dt = now - entry.t
-			if dt >= 0.03 then
-				local okP, pos = pcall(function() return part.Position end)
-				if okP and pos then
-					local raw = (pos - entry.pos) / dt
-					entry.vel = entry.vel:Lerp(raw, 0.5)
-					entry.pos = pos
-					entry.t = now
-				end
-			end
-			return entry.vel
-		end
-		local function predictPoint(part, from, speed)
-			local vel = sampleVelocity(part)
-			if vel.Magnitude < 0.5 then
-				local okP, pos = pcall(function() return part.Position end)
-				return okP and pos or nil
-			end
-			local okB, base = pcall(function() return part.Position end)
-			if not okB or not base then return nil end
-			local aim = base
-			for _ = 1, 3 do
-				local t = (aim - from).Magnitude / math.max(speed, 1)
-				aim = base + vel * t
-			end
-			return aim
-		end
-		-- 26 direction unit vectors (horizontal-first) used by the bend search
-		local bendDirs = {}
-		for bx = -1, 1 do
-			for by = -1, 1 do
-				for bz = -1, 1 do
-					if bx ~= 0 or by ~= 0 or bz ~= 0 then
-						bendDirs[#bendDirs + 1] = Vector3.new(bx, by, bz).Unit
-					end
-				end
-			end
-		end
-		table.sort(bendDirs, function(a, b) return math.abs(a.Y) < math.abs(b.Y) end)
-		local bendCache = setmetatable({}, { __mode = "k" })
-		-- Bend: if the shot origin cannot see `aimPart`, search offset positions
-		-- around the origin (up to maxBendStuds) for one with clear sight to it.
-		-- Rewriting the Fire packet's origin bends the bullet around cover.
-		-- Returns the spot to fire from, or nil when the direct shot is clear.
-		local function findBendSpot(origin, aimPart, model, maxBendStuds)
-			if type(OVX.rayClear) ~= "function" then return nil end
-			if OVX.rayClear(origin, aimPart.Position, model) then return nil end
-			local now = os.clock()
-			local cached = model and bendCache[model]
-			if cached and now - cached.t < 0.12 and (cached.o - origin).Magnitude < 0.75 and cached.spot then
-				-- the world moved less than a stud — reuse the last bend spot
-				local okB = OVX.rayClear(cached.spot, aimPart.Position, model)
-				if okB then return cached.spot end
-			end
-			local steps = math.max(3, math.floor(maxBendStuds / 0.75))
-			for s = 1, steps do
-				local dist = maxBendStuds * (s / steps) ^ 1.3
-				for _, d in ipairs(bendDirs) do
-					local spot = origin + d * dist
-					if OVX.rayClear(origin, spot, nil) and OVX.rayClear(spot, aimPart.Position, model) then
-						if model then bendCache[model] = { t = now, o = origin, spot = spot } end
-						return spot
-					end
-				end
-			end
-			return nil
-		end
-		-- One-stop aim solver used by the Fire rewrite: headshot part pick (when
-		-- Manip Headshots is on), optional origin bend, lead prediction and arc.
-		-- Returns from, part, point, dir, bendUsed, flightTime — callers
-		-- overwrite args[1]/args[2] with them and time the claim by flightTime.
-		local function manipulateShot(origin, tgt)
-			local part = tgt.part
-			local model = tgt.model
-			-- bullet manip: hit the HEAD of every target when asked to
-			if flags["sa_manip_headshot"] ~= false and model then
-				local head = model:FindFirstChild("Head")
-				if head and head:IsA("BasePart") then part = head end
-			end
-			if not (part and part.Parent) then part = tgt.part end
-			if not (part and part.Parent) then return origin, nil, nil, nil, false, 0 end
-			local speed, gravity = gunSpeedGravity()
-			local from = origin
-			local bendUsed = false
-			if flags["sa_bend"] == true then
-				local spot = findBendSpot(origin, part, model, tonumber(flags["sa_bend_range"]) or 4)
-				if spot then
-					from = spot
-					bendUsed = true
-				end
-			end
-			local aimPoint = part.Position
-			if flags["sa_prediction"] ~= false then
-				local predicted = predictPoint(part, from, speed)
-				if predicted then aimPoint = predicted end
-			end
-			local dir, tFlight
-			if flags["sa_arc"] ~= false then
-				dir, tFlight = solveArcDir(from, aimPoint, speed, gravity)
-			else
-				dir = (aimPoint - from).Unit
-				local flatXZ = Vector3.new(aimPoint.X - from.X, 0, aimPoint.Z - from.Z).Magnitude
-				tFlight = flatXZ / math.max(speed, 1)
-			end
-			return from, part, aimPoint, dir, bendUsed, tFlight or 0
+			return (flat.Unit * math.cos(ang) + Vector3.new(0, math.sin(ang), 0)).Unit
 		end
 		local function dispatchInstantHits(claimId, part, hitPoint)
-			-- callers decide the TIMING; this only fans the claim out to the
-			-- discovered hit buckets. No flag gate in here, or the flight-synced
-			-- claim would silently die when Instant Hit is off (the default).
-			if claimId == nil or not (part and part.Parent) then return end
+			if flags["sa_instant_hit"] == false or claimId == nil or not (part and part.Parent) then return end
 			local serverTime = Workspace:GetServerTimeNow()
 			for remote in pairs(SA.hitRemotes) do
 				pcall(function() remote:FireServer(claimId, 1, part, hitPoint, serverTime) end)
@@ -4344,6 +4217,12 @@ do
 		local function sendClaims(claimId, part, hitPoint)
 			firingOwn = true
 			pcall(dispatchInstantHits, claimId, part, hitPoint)
+			firingOwn = false
+		end
+		local function sendDelayedClaim(claimId, part, hitPoint)
+			if not HitRemote then return end
+			firingOwn = true
+			pcall(function() HitRemote:FireServer(claimId, 1, part, hitPoint, Workspace:GetServerTimeNow()) end)
 			firingOwn = false
 		end
 		local function rememberClaim(claimId)
@@ -4385,41 +4264,32 @@ do
 						local a = { ... }
 						local tgt = _saTarget
 						if tgt and typeof(a[1]) == "Vector3" then
+							local livePoint = (tgt.part and tgt.part.Parent and tgt.part.Position) or tgt.point
 							local claim = a[4]
 							local claimId = typeof(claim) == "table" and type(claim.id) == "number" and claim.id or nil
-							-- bullet manip: headshot pick + bend around cover + lead + arc
-							local from, manipPart, aimPoint, manipDir, bendUsed, tFlight = manipulateShot(a[1], tgt)
-							if not (manipPart and aimPoint) then
-								-- fallback: plain straight-line redirect (old behavior)
-								local livePoint = (tgt.part and tgt.part.Parent and tgt.part.Position) or tgt.point
-								from, manipPart, aimPoint, manipDir = a[1], tgt.part, livePoint, (livePoint - a[1]).Unit
-								bendUsed, tFlight = false, (aimPoint - from).Magnitude / 1000
-							end
-							if not bendUsed and flags["bp_enabled"] and not rayClear(a[1], aimPoint, tgt.model) then
+							if flags["bp_enabled"] and typeof(livePoint) == "Vector3"
+								and not rayClear(a[1], livePoint, tgt.model) then
 								gunPeekStart(tgt, a[1])
 								return old(self, ...)
 							end
-							a[1] = from
-							a[2] = manipDir
+							local aimPart, aimPoint = tgt.part, livePoint
+							local speed, gravity = gunSpeedGravity()
+							local useArc = flags["sa_arc"] ~= false
+							a[2] = useArc and solveArcDir(a[1], aimPoint, speed, gravity) or (aimPoint - a[1]).Unit
 							if claimId then rememberClaim(claimId) end
 							OVX.saRedirectAt = os.clock()
 							local ret = old(self, unpack(a))
-							-- flight-synced claim: land when the simulated bullet lands,
-							-- like the game's own claimHit does. Instant claims at long
-							-- range arrive implausibly early and get rejected — which is
-							-- why silent hits only worked up close.
-							local travel = type(tFlight) == "number" and tFlight or (aimPoint - from).Magnitude / 1000
+							local travel = (aimPoint - a[1]).Magnitude / math.max(speed, 1)
 							OVX.saFireDebug = {
 								t = os.clock(), tool = (lp.Character and lp.Character:FindFirstChildOfClass("Tool")) and lp.Character:FindFirstChildOfClass("Tool").Name or "?",
-								peek = bpHome ~= nil, bend = bendUsed, claim = claimId,
-								dist = math.floor((aimPoint - from).Magnitude + 0.5),
-								flight = math.floor(travel * 1000 + 0.5) / 1000,
+								peek = bpHome ~= nil, claim = claimId, arc = useArc,
+								dist = math.floor((aimPoint - a[1]).Magnitude + 0.5),
 							}
 							if claimId then
-								if flags["sa_instant_hit"] == true then
-									sendClaims(claimId, manipPart, aimPoint)
+								if flags["sa_instant_hit"] ~= false then
+									sendClaims(claimId, aimPart, aimPoint)
 								else
-									task.delay(travel, function() sendClaims(claimId, manipPart, aimPoint) end)
+									task.delay(travel, function() sendDelayedClaim(claimId, aimPart, aimPoint) end)
 								end
 							end
 							return ret
@@ -4431,16 +4301,8 @@ do
 						if tgt and tgt.part and tgt.part.Parent then
 							local args = { ... }
 							local rewritten, livePoint = rewriteFireArgs(args, tgt)
-							local claimIdSnapshot = SA.pendingId
 							local ret = old(self, unpack(rewritten))
-							if flags["sa_instant_hit"] == true then
-								sendClaims(claimIdSnapshot, tgt.part, livePoint)
-							else
-								local originV = typeof(rewritten[1]) == "Vector3" and rewritten[1] or nil
-								local speed = gunSpeedGravity()
-								local travel = originV and (livePoint - originV).Magnitude / math.max(speed, 1) or 0.15
-								task.delay(travel, function() sendClaims(claimIdSnapshot, tgt.part, livePoint) end)
-							end
+							sendClaims(SA.pendingId, tgt.part, livePoint)
 							return ret
 						end
 					end
@@ -6393,13 +6255,8 @@ do
 	sa:slider({ name = "Max Distance", min = 0, max = 5000, default = 0, interval = 10, suffix = "m", flag = "sa_max_dist" })
 	sa:slider({ name = "Scan Rate", min = 4, max = 30, default = 12, interval = 1, suffix = " Hz", flag = "sa_scan_hz", tooltip = "Lower Hz = less CPU; 12 Hz replaces the old every-other-frame Workspace:GetDescendants() scan" })
 	sa:toggle({ name = "Force Head", flag = "sa_force_head", default = false, tooltip = "Always aim at heads regardless of the Aim Bone dropdown" })
-	sa:toggle({ name = "Instant Hit", flag = "sa_instant_hit", default = false, tooltip = "Claim the hit instantly on fire (can be rejected at long range). OFF = the claim lands with the simulated bullet, mirroring the game's own timing — required for long-range damage" })
-	-- Bullet Manip (drop compensation / lead / bend): see the Fire-remote rewrite
-	sa:toggle({ name = "Drop Compensation", flag = "sa_arc", default = true, tooltip = "Solve the projectile arc from your gun's BulletSpeed/BulletGravity so long-range shots land on the target instead of under it" })
-	sa:toggle({ name = "Bullet Prediction", flag = "sa_prediction", default = true, tooltip = "Lead moving targets with their velocity x travel time (iterated)" })
-	sa:toggle({ name = "Bullet Manip (Bend)", flag = "sa_bend", default = false, tooltip = "Rewrite the Fire packet's origin to a nearby clear spot — bullets bend around cover, but servers may reject teleported origins. Off by default for that reason" })
-	sa:slider({ name = "Bend Distance", min = 1, max = 8, default = 4, interval = 0.5, suffix = " studs", flag = "sa_bend_range", tooltip = "How far from the muzzle the bend may start the shot from" })
-	sa:toggle({ name = "Manip Headshots", flag = "sa_manip_headshot", default = true, tooltip = "Bullet manip aims at the head of every target, whatever the Aim Bone setting" })
+	sa:toggle({ name = "Instant Hit", flag = "sa_instant_hit", default = true, tooltip = "Send the rewritten shot's hit claim immediately — pairs with Drop Compensation so silent hits land at any range" })
+	sa:toggle({ name = "Drop Compensation", flag = "sa_arc", default = true, tooltip = "Ballistics solver: lobs the rewritten shot along the gravity arc computed from your gun's BulletSpeed (x muzzle Speed multiplier) and BulletGravity — instant claim, but the bullet actually lands on the target at long range" })
 	-- Remote Jack is not a toggle anymore: the embedded PSilent ALWAYS fires
 	-- its rewritten hit claim straight through the Fire/Hit/Damage remote
 	-- buckets (see the namecall hook), which is also what lets silent hits
