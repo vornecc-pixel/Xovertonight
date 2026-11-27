@@ -462,6 +462,11 @@ setDefaultFlag("sa_enabled", true)
 setDefaultFlag("sa_force_head", false)
 setDefaultFlag("sa_instant_hit", true)
 setDefaultFlag("wm_range", true)
+setDefaultFlag("sa_arc", true)
+setDefaultFlag("sa_prediction", true)
+setDefaultFlag("sa_bend", true)
+setDefaultFlag("sa_manip_headshot", true)
+setDefaultFlag("sa_bend_range", 4)
 setDefaultFlag("sa_target_npc", true)
 setDefaultFlag("sa_snapline_npc", true)
 setDefaultFlag("tb_npc", true)
@@ -4169,6 +4174,127 @@ do
 		and hookmetamethod and newcclosure and getnamecallmethod then
 		local firingOwn = false
 		local hasCheckcaller = type(checkcaller) == "function"
+		-- ============ BULLET MANIP (ported from "Bullet manipulation.txt") ============
+		-- Everything the embedded PSilent needs so a rewritten shot still lands
+		-- at long range / around cover, instead of flying straight and dropping
+		-- underneath the target. Uses only attributes the game itself reads
+		-- (BulletSpeed / BulletGravity) plus the target's AssemblyLinearVelocity.
+		local function gunSpeedGravity()
+			local tool = lp.Character and lp.Character:FindFirstChildOfClass("Tool")
+			local speed = tool and tonumber(tool:GetAttribute("BulletSpeed")) or nil
+			local gravity = tool and tonumber(tool:GetAttribute("BulletGravity")) or nil
+			if not (speed and speed > 1) then speed = 1000 end
+			if not (gravity and gravity >= 0) then gravity = 60 end
+			return speed, gravity
+		end
+		-- Low-angle ballistic arc: the direction to fire so the projectile,
+		-- pulled down by gravity, lands exactly on `to` from `from`. Falls back
+		-- to a straight line when the gun is fast enough / gravity is 0 / the
+		-- target is out of physical reach.
+		local function solveArcDir(from, to, speed, gravity)
+			local diff = to - from
+			local flat = Vector3.new(diff.X, 0, diff.Z)
+			local x, y = flat.Magnitude, diff.Y
+			if x < 0.01 or gravity <= 0 then return diff.Unit end
+			local v2 = speed * speed
+			local root = v2 * v2 - gravity * (gravity * x * x + 2 * y * v2)
+			if root < 0 then return diff.Unit end
+			local ang = math.atan((v2 - math.sqrt(root)) / (gravity * x))
+			return (flat.Unit * math.cos(ang) + Vector3.new(0, math.sin(ang), 0)).Unit
+		end
+		-- Lead prediction: where `part` will be after the bullet's flight time.
+		-- Iterated with the travel distance so it converges for long shots.
+		local function predictPoint(part, from, speed)
+			local ok, p, v = pcall(function()
+				local pos = part.Position
+				local vel = part.AssemblyLinearVelocity
+				return pos, vel
+			end)
+			if not ok or not p then return nil end
+			v = v or Vector3.new(0, 0, 0)
+			local point = p
+			for _ = 1, 3 do
+				local t = (point - from).Magnitude / math.max(speed, 1)
+				point = p + v * t
+			end
+			return point
+		end
+		-- 26 direction unit vectors (horizontal-first) used by the bend search
+		local bendDirs = {}
+		for bx = -1, 1 do
+			for by = -1, 1 do
+				for bz = -1, 1 do
+					if bx ~= 0 or by ~= 0 or bz ~= 0 then
+						bendDirs[#bendDirs + 1] = Vector3.new(bx, by, bz).Unit
+					end
+				end
+			end
+		end
+		table.sort(bendDirs, function(a, b) return math.abs(a.Y) < math.abs(b.Y) end)
+		local bendCache = setmetatable({}, { __mode = "k" })
+		-- Bend: if the shot origin cannot see `aimPart`, search offset positions
+		-- around the origin (up to maxBendStuds) for one with clear sight to it.
+		-- Rewriting the Fire packet's origin bends the bullet around cover.
+		-- Returns the spot to fire from, or nil when the direct shot is clear.
+		local function findBendSpot(origin, aimPart, model, maxBendStuds)
+			if type(OVX.rayClear) ~= "function" then return nil end
+			if OVX.rayClear(origin, aimPart.Position, model) then return nil end
+			local now = os.clock()
+			local cached = model and bendCache[model]
+			if cached and now - cached.t < 0.12 and (cached.o - origin).Magnitude < 0.75 and cached.spot then
+				-- the world moved less than a stud — reuse the last bend spot
+				local okB = OVX.rayClear(cached.spot, aimPart.Position, model)
+				if okB then return cached.spot end
+			end
+			local steps = math.max(3, math.floor(maxBendStuds / 0.75))
+			for s = 1, steps do
+				local dist = maxBendStuds * (s / steps) ^ 1.3
+				for _, d in ipairs(bendDirs) do
+					local spot = origin + d * dist
+					if OVX.rayClear(origin, spot, nil) and OVX.rayClear(spot, aimPart.Position, model) then
+						if model then bendCache[model] = { t = now, o = origin, spot = spot } end
+						return spot
+					end
+				end
+			end
+			return nil
+		end
+		-- One-stop aim solver used by the Fire rewrite: headshot part pick (when
+		-- Manip Headshots is on), optional origin bend, lead prediction and arc.
+		-- Returns from, part, point, dir — callers overwrite args[1]/args[2].
+		local function manipulateShot(origin, tgt)
+			local part = tgt.part
+			local model = tgt.model
+			-- bullet manip: hit the HEAD of every target when asked to
+			if flags["sa_manip_headshot"] ~= false and model then
+				local head = model:FindFirstChild("Head")
+				if head and head:IsA("BasePart") then part = head end
+			end
+			if not (part and part.Parent) then part = tgt.part end
+			if not (part and part.Parent) then return origin, nil, nil, nil, false end
+			local speed, gravity = gunSpeedGravity()
+			local from = origin
+			local bendUsed = false
+			if flags["sa_bend"] ~= false then
+				local spot = findBendSpot(origin, part, model, tonumber(flags["sa_bend_range"]) or 4)
+				if spot then
+					from = spot
+					bendUsed = true
+				end
+			end
+			local aimPoint = part.Position
+			if flags["sa_prediction"] ~= false then
+				local predicted = predictPoint(part, from, speed)
+				if predicted then aimPoint = predicted end
+			end
+			local dir
+			if flags["sa_arc"] ~= false then
+				dir = solveArcDir(from, aimPoint, speed, gravity)
+			else
+				dir = (aimPoint - from).Unit
+			end
+			return from, part, aimPoint, dir, bendUsed
+		end
 		local function dispatchInstantHits(claimId, part, hitPoint)
 			if flags["sa_instant_hit"] == false or claimId == nil or not (part and part.Parent) then return end
 			local serverTime = Workspace:GetServerTimeNow()
@@ -4226,32 +4352,37 @@ do
 						local a = { ... }
 						local tgt = _saTarget
 						if tgt and typeof(a[1]) == "Vector3" then
-							local livePoint = (tgt.part and tgt.part.Parent and tgt.part.Position) or tgt.point
 							local claim = a[4]
 							local claimId = typeof(claim) == "table" and type(claim.id) == "number" and claim.id or nil
-							if flags["bp_enabled"] and typeof(livePoint) == "Vector3"
-								and not rayClear(a[1], livePoint, tgt.model) then
+							-- bullet manip: headshot pick + bend around cover + lead + arc
+							local from, manipPart, aimPoint, manipDir, bendUsed = manipulateShot(a[1], tgt)
+							if not (manipPart and aimPoint) then
+								-- fallback: plain straight-line redirect (old behavior)
+								local livePoint = (tgt.part and tgt.part.Parent and tgt.part.Position) or tgt.point
+								from, manipPart, aimPoint, manipDir, bendUsed = a[1], tgt.part, livePoint, (livePoint - a[1]).Unit, false
+							end
+							if not bendUsed and flags["bp_enabled"] and not rayClear(a[1], aimPoint, tgt.model) then
 								gunPeekStart(tgt, a[1])
 								return old(self, ...)
 							end
-							local aimPart, aimPoint = tgt.part, livePoint
-							a[2] = (aimPoint - a[1]).Unit
+							a[1] = from
+							a[2] = manipDir
 							if claimId then rememberClaim(claimId) end
 							OVX.saRedirectAt = os.clock()
 							local ret = old(self, unpack(a))
 							local tool = lp.Character and lp.Character:FindFirstChildOfClass("Tool")
 							local speed = (tool and tonumber(tool:GetAttribute("BulletSpeed"))) or 1e4
-							local travel = (aimPoint - a[1]).Magnitude / math.max(speed, 1)
+							local travel = (aimPoint - from).Magnitude / math.max(speed, 1)
 							OVX.saFireDebug = {
 								t = os.clock(), tool = tool and tool.Name or "?",
-								peek = bpHome ~= nil, claim = claimId,
-								dist = math.floor((aimPoint - a[1]).Magnitude + 0.5),
+								peek = bpHome ~= nil, bend = bendUsed, claim = claimId,
+								dist = math.floor((aimPoint - from).Magnitude + 0.5),
 							}
 							if claimId then
 								if flags["sa_instant_hit"] ~= false then
-									sendClaims(claimId, aimPart, aimPoint)
+									sendClaims(claimId, manipPart, aimPoint)
 								else
-									task.delay(travel, function() sendDelayedClaim(claimId, aimPart, aimPoint) end)
+									task.delay(travel, function() sendDelayedClaim(claimId, manipPart, aimPoint) end)
 								end
 							end
 							return ret
@@ -6218,6 +6349,12 @@ do
 	sa:slider({ name = "Scan Rate", min = 4, max = 30, default = 12, interval = 1, suffix = " Hz", flag = "sa_scan_hz", tooltip = "Lower Hz = less CPU; 12 Hz replaces the old every-other-frame Workspace:GetDescendants() scan" })
 	sa:toggle({ name = "Force Head", flag = "sa_force_head", default = false, tooltip = "Always aim at heads regardless of the Aim Bone dropdown" })
 	sa:toggle({ name = "Instant Hit", flag = "sa_instant_hit", default = true, tooltip = "Send the rewritten shot's hit claim immediately" })
+	-- Bullet Manip (drop compensation / lead / bend): see the Fire-remote rewrite
+	sa:toggle({ name = "Drop Compensation", flag = "sa_arc", default = true, tooltip = "Solve the projectile arc from your gun's BulletSpeed/BulletGravity so long-range shots land on the target instead of under it" })
+	sa:toggle({ name = "Bullet Prediction", flag = "sa_prediction", default = true, tooltip = "Lead moving targets with their velocity x travel time (iterated)" })
+	sa:toggle({ name = "Bullet Manip (Bend)", flag = "sa_bend", default = true, tooltip = "If the head is covered, rewrite the shot origin to a nearby spot with clear sight — the bullet bends around cover" })
+	sa:slider({ name = "Bend Distance", min = 1, max = 8, default = 4, interval = 0.5, suffix = " studs", flag = "sa_bend_range", tooltip = "How far from the muzzle the bend may start the shot from" })
+	sa:toggle({ name = "Manip Headshots", flag = "sa_manip_headshot", default = true, tooltip = "Bullet manip aims at the head of every target, whatever the Aim Bone setting" })
 	-- Remote Jack is not a toggle anymore: the embedded PSilent ALWAYS fires
 	-- its rewritten hit claim straight through the Fire/Hit/Damage remote
 	-- buckets (see the namecall hook), which is also what lets silent hits
