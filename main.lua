@@ -5200,6 +5200,92 @@ do
 end
 
 -- ================================================================
+-- // WORLD VISUALS — No FOG / Loop Fullbright
+-- //   No per-frame work anywhere: properties are only WRITTEN when
+-- //   they drifted from the forced values, a 2 Hz Heartbeat re-checks
+-- //   (compare + maybe-write, never iterate the world), and Lighting
+-- //   Atmospheres added later are caught by a single DescendantAdded
+-- //   connection. Toggling off (or config flip) restores every original
+-- //   value we snapshotted.
+-- ================================================================
+local worldVisLast = 0
+do
+	local Lighting = game:GetService("Lighting")
+	local fogSnap, fbSnap = {}, {}
+	local function snapInto(tbl, inst, props)
+		if tbl[inst] then return end
+		local snap = {}
+		for _, p in ipairs(props) do
+			local ok, v = pcall(function() return inst[p] end)
+			if ok then snap[p] = v end
+		end
+		tbl[inst] = snap
+	end
+	local function restoreInto(tbl)
+		for inst, snap in pairs(tbl) do
+			for p, v in pairs(snap) do pcall(function() inst[p] = v end) end
+		end
+		table.clear(tbl)
+	end
+	-- write only when drifted — Roblox property sets of equal values are
+	-- dodged entirely, so the steady-state loop costs exactly four compares
+	local function applyNoFog()
+		snapInto(fogSnap, Lighting, { "FogEnd", "FogStart" })
+		if Lighting.FogEnd ~= 1000000 then pcall(function() Lighting.FogEnd = 1000000 end) end
+		if Lighting.FogStart ~= 1000000 then pcall(function() Lighting.FogStart = 1000000 end) end
+		for _, child in ipairs(Lighting:GetChildren()) do
+			if child:IsA("Atmosphere") then
+				snapInto(fogSnap, child, { "Density", "Haze", "Glare" })
+				if child.Density ~= 0 then pcall(function() child.Density = 0 end) end
+				if child.Haze ~= 0 then pcall(function() child.Haze = 0 end) end
+				if child.Glare ~= 0 then pcall(function() child.Glare = 0 end) end
+			end
+		end
+	end
+	local function removeNoFog()
+		restoreInto(fogSnap)
+	end
+	local FB_WHITE = Color3.fromRGB(255, 255, 255)
+	local FB_BRIGHTNESS = 10
+	local function applyFullbright()
+		snapInto(fbSnap, Lighting, { "Ambient", "OutdoorAmbient", "Brightness", "GlobalShadows" })
+		if Lighting.Ambient ~= FB_WHITE then pcall(function() Lighting.Ambient = FB_WHITE end) end
+		if Lighting.OutdoorAmbient ~= FB_WHITE then pcall(function() Lighting.OutdoorAmbient = FB_WHITE end) end
+		if Lighting.Brightness ~= FB_BRIGHTNESS then pcall(function() Lighting.Brightness = FB_BRIGHTNESS end) end
+		if Lighting.GlobalShadows ~= false then pcall(function() Lighting.GlobalShadows = false end) end
+	end
+	local function removeFullbright()
+		restoreInto(fbSnap)
+	end
+	worldVisLast = 0
+	bind(RunService.Heartbeat:Connect(function()
+		-- 2 Hz, and it only ever writes when the game drifted the values back
+		local now = os.clock()
+		if now - worldVisLast < 0.5 then return end
+		worldVisLast = now
+		if flags["world_no_fog"] then applyNoFog() elseif next(fogSnap) then removeNoFog() end
+		if flags["world_fullbright"] then applyFullbright() elseif next(fbSnap) then removeFullbright() end
+	end))
+	bind(Lighting.DescendantAdded:Connect(function(child)
+		-- a brand-new Atmosphere spawns in — kill it immediately instead of
+		-- waiting for the next 2 Hz tick
+		if flags["world_no_fog"] and child:IsA("Atmosphere") then
+			task.defer(function()
+				pcall(function()
+					snapInto(fogSnap, child, { "Density", "Haze", "Glare" })
+					child.Density = 0; child.Haze = 0; child.Glare = 0
+				end)
+			end)
+		end
+	end))
+	-- unload: restore every original lighting value we ever touched
+	bind({ Disconnect = function()
+		removeNoFog()
+		removeFullbright()
+	end })
+end
+
+-- ================================================================
 -- // MISC — SPEED / SPIDER / FREECAM
 -- //   Spider/Freecam logic is adapted from vape v4 (entitylib -> direct
 -- //   character access, vape options -> library flags). Speed is a plain
@@ -6494,6 +6580,10 @@ do
 	local SECTION_COL = { General = 1, Nodes = 1, Pickups = 1, Loot = 1, Mobs = 2, ["World Items"] = 2, Vehicles = 2, Events = 3 }
 	local cols = { worldTab:column(), worldTab:column(), worldTab:column() }
 	local sections = {}
+	-- World Visuals: rendering-level tweaks (no per-frame cost)
+	local wv = cols[1]:section({ name = "World Visuals" })
+	wv:toggle({ name = "No FOG", flag = "world_no_fog", default = false, tooltip = "Neutralizes classic fog and every Atmosphere in Lighting (Density / Haze / Glare = 0) — re-checked in a loop so the game can't bring it back. Zero per-frame cost, full restore on toggle off" })
+	wv:toggle({ name = "Loop Fullbright", flag = "world_fullbright", default = false, tooltip = "Ambient + OutdoorAmbient forced white, Brightness 10, GlobalShadows off — the world renders fully lit. Re-asserted at 2 Hz with drift checks; nothing runs per-frame" })
 	local function getSection(name)
 		if not sections[name] then
 			sections[name] = cols[SECTION_COL[name] or 1]:section({ name = name })
