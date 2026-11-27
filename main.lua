@@ -178,6 +178,108 @@ setDefaultFlag("tb_npc", true)
 setDefaultFlag("sa_scan_hz", 12)
 setDefaultFlag("ui_free_mouse", true)
 setDefaultFlag("ui_hud_hz", 4)
+setDefaultFlag("Enabled", true)
+setDefaultFlag("esp_team_check", false)
+setDefaultFlag("esp_max_dist", 0)
+setDefaultFlag("Boxes", true)
+setDefaultFlag("Box_Type", "Full")
+setDefaultFlag("Box_Color", Color3.fromRGB(255, 255, 255))
+setDefaultFlag("esp_box_thickness", 1)
+setDefaultFlag("esp_box_outline", true)
+setDefaultFlag("esp_filled_box", false)
+setDefaultFlag("esp_filled_color", Color3.fromRGB(255, 255, 255))
+setDefaultFlag("esp_filled_transparency", 6)
+setDefaultFlag("Names", true)
+setDefaultFlag("esp_display_names", true)
+setDefaultFlag("Name_Color", Color3.fromRGB(255, 255, 255))
+setDefaultFlag("Healthbar", true)
+setDefaultFlag("esp_health_outline", true)
+setDefaultFlag("esp_health_position", "Left")
+setDefaultFlag("Health_High", Color3.fromRGB(0, 255, 0))
+setDefaultFlag("Health_Low", Color3.fromRGB(255, 0, 0))
+setDefaultFlag("esp_health_text", false)
+setDefaultFlag("esp_health_text_color", Color3.fromRGB(255, 255, 255))
+setDefaultFlag("esp_health_text_gradient", false)
+setDefaultFlag("Distance", true)
+setDefaultFlag("Distance_Color", Color3.fromRGB(200, 200, 200))
+setDefaultFlag("Weapon", false)
+setDefaultFlag("Weapon_Color", Color3.fromRGB(255, 220, 80))
+setDefaultFlag("esp_view_angle", false)
+setDefaultFlag("esp_viewangle_color", Color3.fromRGB(255, 255, 255))
+setDefaultFlag("esp_viewangle_size", 10)
+setDefaultFlag("esp_chams", false)
+setDefaultFlag("esp_cham_vis_check", false)
+setDefaultFlag("esp_cham_fill_color", Color3.fromRGB(255, 255, 255))
+setDefaultFlag("esp_cham_outline_color", Color3.fromRGB(0, 0, 0))
+setDefaultFlag("esp_cham_fill_transparency", 4)
+setDefaultFlag("esp_cham_outline_transparency", 0)
+setDefaultFlag("esp_cham_vis_color", Color3.fromRGB(0, 255, 0))
+setDefaultFlag("esp_cham_invis_color", Color3.fromRGB(255, 0, 0))
+setDefaultFlag("esp_font_size", 13)
+setDefaultFlag("esp_font", "Plex")
+setDefaultFlag("esp_tracers", false)
+setDefaultFlag("esp_tracer_color", Color3.fromRGB(255, 255, 255))
+setDefaultFlag("esp_tracer_origin", "Bottom")
+setDefaultFlag("sf_hands_enabled", false)
+setDefaultFlag("sf_gun_enabled", false)
+setDefaultFlag("sf_protect_muzzle", true)
+setDefaultFlag("sf_double_gun_fix", true)
+setDefaultFlag("sf_vmodel_refresh_hz", 5)
+setDefaultFlag("sf_hand_material", "ForceField")
+setDefaultFlag("sf_hand_preset", "Cyan")
+setDefaultFlag("sf_hand_use_preset", true)
+setDefaultFlag("sf_hand_color", Color3.fromRGB(0, 255, 255))
+setDefaultFlag("sf_hand_transparency", 0)
+setDefaultFlag("sf_hand_reflectance", 2)
+setDefaultFlag("sf_gun_material", "ForceField")
+setDefaultFlag("sf_gun_preset", "Cyan")
+setDefaultFlag("sf_gun_use_preset", true)
+setDefaultFlag("sf_gun_color", Color3.fromRGB(0, 255, 255))
+setDefaultFlag("sf_gun_transparency", 0)
+setDefaultFlag("sf_gun_reflectance", 2)
+setDefaultFlag("sf_tracers_enabled", false)
+setDefaultFlag("sf_tracer_use_preset", true)
+setDefaultFlag("sf_tracer_preset", "Cyan")
+setDefaultFlag("sf_tracer_color", Color3.fromRGB(0, 255, 255))
+setDefaultFlag("sf_tracer_impact_enabled", true)
+setDefaultFlag("sf_tracer_impact_color", Color3.fromRGB(0, 255, 255))
+setDefaultFlag("sf_tracer_impact_size", 0.3)
+setDefaultFlag("sf_tracer_width", 0.2)
+setDefaultFlag("sf_tracer_lifetime", 0.25)
+setDefaultFlag("sf_tracer_segments", 1)
+setDefaultFlag("sf_tracer_glow", 5)
+setDefaultFlag("sf_tracer_light_influence", 0)
+setDefaultFlag("sf_tracer_face_camera", true)
+setDefaultFlag("sf_tracer_max", 24)
+setDefaultFlag("sf_tracer_range", 1000)
+setDefaultFlag("sf_tracer_use_muzzle", true)
+setDefaultFlag("sf_tracer_follow_sa", true)
+setDefaultFlag("sf_tracer_raycast", true)
+setDefaultFlag("sf_tracer_include_bow", true)
+setDefaultFlag("sf_tracer_double_gun", true)
+setDefaultFlag("skin_enabled", true)
+setDefaultFlag("skin_apply_mode", "Selected Gun")
+setDefaultFlag("skin_weapon", "Assault Rifle")
+setDefaultFlag("skin_weapon_custom", "")
+setDefaultFlag("skin_skin", "Tempered")
+setDefaultFlag("skin_skin_custom", "")
+setDefaultFlag("skin_auto_reapply", true)
+setDefaultFlag("skin_delay", 0.05)
+setDefaultFlag("skin_discover_assets", true)
+setDefaultFlag("skin_asset_limit", 1200)
+setDefaultFlag("skin_asset_depth", 5)
+setDefaultFlag("skin_fallback_material", "ForceField")
+setDefaultFlag("skin_fallback_color", Color3.fromRGB(255, 180, 80))
+setDefaultFlag("skin_fallback_transparency", 0)
+setDefaultFlag("skin_fallback_reflectance", 2)
+setDefaultFlag("skin_debug", false)
+setDefaultFlag("ds_ox", 0)
+setDefaultFlag("ds_oy", -2.4)
+setDefaultFlag("ds_oz", 0)
+setDefaultFlag("ds_rx", 90)
+setDefaultFlag("ds_ry", 0)
+setDefaultFlag("ds_rz", 0)
+setDefaultFlag("tb_max_dist", 0)
 local compatTheme = {
 	accent   = Color3.fromRGB(155, 105, 230),
 	dcont    = Color3.fromRGB(12, 12, 17),
@@ -567,8 +669,22 @@ local function attachSection(section, tab)
 		return self
 	end
 
-	function section:textbox()
-		return self
+	function section:textbox(info)
+		info = info or {}
+		local nativeInfo = {
+			name = info.name or "Textbox",
+			default = tostring(info.default or info.def or ""),
+			flag = info.flag,
+		}
+		local textbox = self:Textbox(nativeInfo)
+		local nativeSet = textbox.Set
+		local callback = info.callback
+		function textbox:Set(value)
+			value = tostring(value or "")
+			nativeSet(self, value)
+			if callback then pcall(callback, value) end
+		end
+		return attachValue(textbox, info, self, "textbox")
 	end
 
 	return section
@@ -1453,373 +1569,1491 @@ do
 end
 
 -- ================================================================
--- // PLAYER ESP
+-- // SHARED VIEWMODEL CACHE + PROPERTY RESTORE
+-- //   One shallow camera-side cache powers hand chams, gun chams,
+-- //   tracers and the skin changer. Original properties are stored
+-- //   once so toggling or unloading never leaves a modified part.
 -- ================================================================
 do
+	local vmOriginals = {}
+	OVX.vmOriginals = vmOriginals
+	OVX.vmPropertyNames = { "Material", "Color", "Transparency", "Reflectance", "MeshId", "TextureId" }
+	local viewRoots, viewParts = {}, {}
+	OVX.viewModels, OVX.viewModelParts = viewRoots, viewParts
 
-local espPlayers = {}
-local camera = Workspace.CurrentCamera
+	local function lower(value) return string.lower(tostring(value or "")) end
+	OVX.lowerName = lower
 
-local COLOR_BLACK = c3(0, 0, 0)
-local HEALTH_SEGMENTS = 8  -- gradient bar resolution
-
--- corner box: 8 short lines, defined as {originX, originY, dirX, dirY}
-local CORNER_DEFS = {
-	{ 0, 0,  1, 0 }, { 0, 0, 0,  1 },
-	{ 1, 0, -1, 0 }, { 1, 0, 0,  1 },
-	{ 0, 1,  1, 0 }, { 0, 1, 0, -1 },
-	{ 1, 1, -1, 0 }, { 1, 1, 0, -1 },
-}
-
-local function NewDrawing(dtype, props)
-	local d = Drawingnew(dtype)
-	if props then for k, v in next, props do d[k] = v end end
-	return d
-end
-
-local function NewCham(props)
-	local h = Instance.new("Highlight")
-	h.Parent = CoreGui
-	if props then for k, v in next, props do h[k] = v end end
-	return h
-end
-
-local function allocatePlayer(player)
-	if espPlayers[player] then return end
-	local entry = {
-		name       = NewDrawing("Text",   { Color = c3(255,255,255), Outline = true, Center = true, Size = 13, Font = 2 }),
-		filledbox  = NewDrawing("Square", { Color = c3(255,255,255), Thickness = 1, Filled = true }),
-		boxOutline = NewDrawing("Square", { Color = COLOR_BLACK, Thickness = 3 }),
-		box        = NewDrawing("Square", { Color = c3(255,255,255), Thickness = 1 }),
-		corners    = {},
-		cornersOut = {},
-		healthOutline = NewDrawing("Line", { Color = COLOR_BLACK, Thickness = 4, Visible = false }),
-		healthGrad = {},
-		healthText = NewDrawing("Text",   { Color = c3(255,255,255), Outline = true, Center = true, Size = 13, Font = 2 }),
-		distance   = NewDrawing("Text",   { Color = c3(255,255,255), Outline = true, Center = true, Size = 13, Font = 2 }),
-		weapon     = NewDrawing("Text",   { Color = c3(255,255,255), Outline = true, Center = true, Size = 13, Font = 2 }),
-		viewAngle  = NewDrawing("Line",   { Color = c3(255,255,255), Thickness = 1 }),
-		tracer     = NewDrawing("Line",   { Color = c3(255,255,255), Thickness = 1 }),
-		cham       = NewCham({ FillColor = c3(255,255,255), OutlineColor = COLOR_BLACK, FillTransparency = 0.5, OutlineTransparency = 0.5, Enabled = false }),
-		_hidden    = true,
-	}
-	for i = 1, 8 do
-		entry.corners[i]    = NewDrawing("Line", { Thickness = 2, Visible = false })
-		entry.cornersOut[i] = NewDrawing("Line", { Thickness = 4, Visible = false, Color = COLOR_BLACK })
-	end
-	for i = 1, HEALTH_SEGMENTS do
-		entry.healthGrad[i] = NewDrawing("Line", { Thickness = 3, Visible = false })
-	end
-	espPlayers[player] = entry
-end
-
-local function hideAll(entry)
-	if entry._hidden then return end
-	entry._hidden = true
-	entry.name.Visible = false
-	entry.filledbox.Visible = false
-	entry.boxOutline.Visible = false
-	entry.box.Visible = false
-	entry.healthOutline.Visible = false
-	entry.healthText.Visible = false
-	entry.distance.Visible = false
-	entry.weapon.Visible = false
-	entry.viewAngle.Visible = false
-	entry.tracer.Visible = false
-	entry.cham.Enabled = false
-	for i = 1, 8 do entry.corners[i].Visible = false; entry.cornersOut[i].Visible = false end
-	for i = 1, HEALTH_SEGMENTS do entry.healthGrad[i].Visible = false end
-end
-
-local function removeAll(entry)
-	for _, v in pairs(entry) do
-		if type(v) == "table" then
-			for _, sub in ipairs(v) do pcall(function() sub:Remove() end) end
-		elseif typeof(v) == "Instance" then
-			pcall(function() v:Destroy() end)
-		elseif type(v) ~= "boolean" then
-			pcall(function() v:Remove() end)
-		end
-	end
-end
-
-local function releasePlayer(player)
-	local entry = espPlayers[player]
-	if not entry then return end
-	espPlayers[player] = nil
-	removeAll(entry)
-end
-
-local function drawCorners(entry, bx, by, bw, bh, color)
-	local len = bw * 0.28
-	for i = 1, 8 do
-		local d = CORNER_DEFS[i]
-		local px, py = bx + d[1] * bw, by + d[2] * bh
-		local ex, ey = px + d[3] * len, py + d[4] * len
-		entry.cornersOut[i].From = v2new(px, py); entry.cornersOut[i].To = v2new(ex, ey); entry.cornersOut[i].Visible = true
-		entry.corners[i].From = v2new(px, py); entry.corners[i].To = v2new(ex, ey); entry.corners[i].Color = color; entry.corners[i].Visible = true
-	end
-end
-
--- init existing + future players
-for _, p in ipairs(Players:GetPlayers()) do
-	if p ~= lp then allocatePlayer(p) end
-end
-bind(Players.PlayerAdded:Connect(function(p)
-	if p ~= lp then allocatePlayer(p) end
-end))
-bind(Players.PlayerRemoving:Connect(releasePlayer))
-bind(lp.CharacterRemoving:Connect(function()
-	for _, entry in pairs(espPlayers) do hideAll(entry) end
-end))
-
--- ——— RENDER ———
-bind(RunService.RenderStepped:Connect(function()
-	camera = Workspace.CurrentCamera
-	if not camera then return end
-
-	local fEnabled = flags["Enabled"]
-	if not fEnabled then
-		for _, entry in pairs(espPlayers) do hideAll(entry) end
-		return
+	local function saveOriginal(part)
+		if not part or vmOriginals[part] then return end
+		local data = {}
+		pcall(function()
+			data.Material = part.Material
+			data.Color = part.Color
+			data.Transparency = part.Transparency
+			data.Reflectance = part.Reflectance
+			data.MeshId = part.MeshId
+			data.TextureId = part.TextureId
+		end)
+		vmOriginals[part] = data
 	end
 
-	-- local position: HRP when present, else model pivot (self is always
-	-- streamed in, but stay robust)
-	local char = lp.Character
-	local localPos
-	if char then
-		local lhrp = char:FindFirstChild("HumanoidRootPart")
-		if lhrp then
-			localPos = lhrp.Position
-		else
-			local ok, p = pcall(function() return char:GetPivot().Position end)
-			if ok then localPos = p end
-		end
+	local function restoreOriginal(part)
+		local data = part and vmOriginals[part]
+		if not data then return end
+		pcall(function()
+			if data.Material ~= nil then part.Material = data.Material end
+			if data.Color ~= nil then part.Color = data.Color end
+			if data.Transparency ~= nil then part.Transparency = data.Transparency end
+			if data.Reflectance ~= nil then part.Reflectance = data.Reflectance end
+			if data.MeshId ~= nil then part.MeshId = data.MeshId end
+			if data.TextureId ~= nil then part.TextureId = data.TextureId end
+		end)
 	end
 
-	-- cache every flag read once per frame
-	local fTeamCheck  = flags["esp_team_check"]
-	local fMaxDist    = flags["esp_max_dist"] or 0
-	local fBoxes      = flags["Boxes"]
-	local fBoxType    = flags["Box_Type"] or "Full"
-	local fFilledBox  = flags["esp_filled_box"]
-	local fNames      = flags["Names"]
-	local fDisplayN   = flags["esp_display_names"]
-	local fHealthbar  = flags["Healthbar"]
-	local fHealthText = flags["esp_health_text"]
-	local fDistance   = flags["Distance"]
-	local fWeapon     = flags["Weapon"]
-	local fViewAngle  = flags["esp_view_angle"]
-	local fTracers    = flags["esp_tracers"]
-	local fChams      = flags["esp_chams"]
-	local fTracerFrom = flags["esp_tracer_origin"] or "Bottom"
+	function OVX.saveVmOriginal(part) saveOriginal(part) end
+	function OVX.restoreVmOriginal(part) restoreOriginal(part) end
+	function OVX.restoreAllVmOriginals(clear)
+		for part in pairs(vmOriginals) do restoreOriginal(part) end
+		if clear then table.clear(vmOriginals) end
+	end
 
-	local cName    = resolveColor("Name_Color", c3(255,255,255))
-	local cBox     = resolveColor("Box_Color", c3(255,255,255))
-	local cDist    = resolveColor("Distance_Color", c3(200,200,200))
-	local cWeapon  = resolveColor("Weapon_Color", c3(255,255,255))
-	local cFilled  = resolveColor("esp_filled_color", COLOR_BLACK)
-	local cTracer  = resolveColor("esp_tracer_color", c3(255,255,255))
-	local cView    = resolveColor("esp_viewangle_color", c3(255,255,255))
-	local cHpHigh  = resolveColor("Health_High", c3(0,255,0))
-	local cHpLow   = resolveColor("Health_Low", c3(255,0,0))
-	local cChamF   = resolveColor("esp_cham_fill_color", c3(255,255,255))
-	local cChamO   = resolveColor("esp_cham_outline_color", COLOR_BLACK)
-
-	local filledTransp  = (flags["esp_filled_transparency"] or 5) / 10
-	local chamFTransp   = (flags["esp_cham_fill_transparency"] or 5) / 10
-	local chamOTransp   = (flags["esp_cham_outline_transparency"] or 5) / 10
-	local viewSize      = flags["esp_viewangle_size"] or 10
-	local vpSize        = camera.ViewportSize
-
-	for _, player in ipairs(Players:GetPlayers()) do
-		if player == lp then continue end
-		local entry = espPlayers[player]
-		if not entry then allocatePlayer(player); entry = espPlayers[player] end
-
-		local model = player.Character
-		local hum   = model and model:FindFirstChildOfClass("Humanoid")
-		local head  = model and model:FindFirstChild("Head")
-
-		-- renderable gate (NOTE: this game uses StreamingEnabled, so far players
-		-- have NO body parts — fall back to the model pivot for their position)
-		if not (model and hum and hum.Health > 0 and localPos)
-			or (fTeamCheck and sameTeam(player)) then
-			hideAll(entry); continue
-		end
-
-		-- position source: HumanoidRootPart when streamed in (live), else the
-		-- model pivot (streamed-out players — last-known position)
-		local pos
-		local hrp = model:FindFirstChild("HumanoidRootPart")
-		if hrp then
-			pos = hrp.Position
-		else
-			local ok, piv = pcall(function() return model:GetPivot().Position end)
-			if not (ok and piv) then hideAll(entry); continue end
-			pos = piv
-		end
-
-		local dist = (pos - localPos).Magnitude
-		if fMaxDist > 0 and dist > fMaxDist then hideAll(entry); continue end
-
-		local root, onScreen = camera:WorldToViewportPoint(pos)
-		if not onScreen or root.Z < 0 then hideAll(entry); continue end
-		entry._hidden = false
-
-		-- perspective-correct box (identical math to the Walls ESP)
-		local topY = camera:WorldToViewportPoint(pos + v3new(0, 2.6, 0)).Y
-		local botY = camera:WorldToViewportPoint(pos - v3new(0, 3, 0)).Y
-		local Size = (botY - topY) / 2
-		local BoxSize = v2new(floor(Size * 1.5), floor(Size * 1.9))
-		local BoxPos  = v2new(floor(root.X - Size * 1.5 / 2), floor(root.Y - Size * 1.6 / 2))
-		local bottomStack = BoxPos.Y + BoxSize.Y + 1
-
-		-- chams
-		if fChams then
-			entry.cham.Adornee = model
-			entry.cham.FillColor = cChamF
-			entry.cham.OutlineColor = cChamO
-			entry.cham.FillTransparency = chamFTransp
-			entry.cham.OutlineTransparency = chamOTransp
-			entry.cham.Enabled = true
-		else
-			entry.cham.Enabled = false
-		end
-
-		-- filled box (behind the outline)
-		if fFilledBox then
-			entry.filledbox.Size = BoxSize + v2new(-2, -2)
-			entry.filledbox.Position = BoxPos + v2new(1, 1)
-			entry.filledbox.Color = cFilled
-			entry.filledbox.Transparency = filledTransp
-			entry.filledbox.Visible = true
-		else
-			entry.filledbox.Visible = false
-		end
-
-		-- box (corner or full)
-		if fBoxes then
-			if fBoxType == "Corner" then
-				entry.boxOutline.Visible = false
-				entry.box.Visible = false
-				drawCorners(entry, BoxPos.X, BoxPos.Y, BoxSize.X, BoxSize.Y, cBox)
-			else
-				for i = 1, 8 do entry.corners[i].Visible = false; entry.cornersOut[i].Visible = false end
-				entry.boxOutline.Size = BoxSize; entry.boxOutline.Position = BoxPos; entry.boxOutline.Visible = true
-				entry.box.Size = BoxSize; entry.box.Position = BoxPos; entry.box.Color = cBox; entry.box.Visible = true
+	local HAND_WORDS = { "hand", "arm", "sleeve", "glove", "wrist", "forearm" }
+	local PROTECTED_WORDS = { "muzzle", "flash", "smoke", "particle", "beam", "tracer", "bullet", "light" }
+	local function nameMatches(part, words)
+		local obj, depth = part, 0
+		while obj and depth < 5 do
+			local name = ""
+			pcall(function() name = lower(obj.Name) end)
+			for _, word in ipairs(words) do
+				if string.find(name, word, 1, true) then return true end
 			end
-		else
-			entry.boxOutline.Visible = false
-			entry.box.Visible = false
-			for i = 1, 8 do entry.corners[i].Visible = false; entry.cornersOut[i].Visible = false end
+			obj = obj.Parent
+			depth = depth + 1
 		end
+		return false
+	end
+	function OVX.isHandViewPart(part) return nameMatches(part, HAND_WORDS) end
+	function OVX.isProtectedViewPart(part) return nameMatches(part, PROTECTED_WORDS) end
 
-		-- gradient healthbar (Low at the bottom -> High at the top, filled by HP%)
-		if fHealthbar then
-			local ratio = clamp(hum.Health / (hum.MaxHealth > 0 and hum.MaxHealth or 1), 0, 1)
-			local barX    = BoxPos.X - 5
-			local bottomY = BoxPos.Y + BoxSize.Y
-			local fullH   = BoxSize.Y
-			local fillTopY = bottomY - ratio * fullH
+	local function collectViewParts(root, out, depth, maxDepth)
+		out = out or {}
+		depth = depth or 0
+		maxDepth = maxDepth or 6
+		if not root or depth >= maxDepth or #out >= 400 then return out end
+		local children
+		local ok = pcall(function() children = root:GetChildren() end)
+		if not ok or type(children) ~= "table" then return out end
+		for _, child in ipairs(children) do
+			local isPart = false
+			pcall(function() isPart = child:IsA("BasePart") end)
+			if isPart and #out < 400 then out[#out + 1] = child end
+			if #out < 400 then collectViewParts(child, out, depth + 1, maxDepth) end
+		end
+		return out
+	end
+	OVX.collectViewParts = collectViewParts
 
-			entry.healthOutline.From = v2new(barX, bottomY + 1)
-			entry.healthOutline.To   = v2new(barX, BoxPos.Y - 1)
-			entry.healthOutline.Visible = true
+	local function looksLikeViewRoot(obj)
+		if not obj then return false end
+		local name = ""
+		pcall(function() name = lower(obj.Name) end)
+		local words = { "viewmodel", "view model", "arm", "hand", "weapon", "gun", "tool", "bow" }
+		for _, word in ipairs(words) do
+			if string.find(name, word, 1, true) then return true end
+		end
+		local parts = collectViewParts(obj, {}, 0, 3)
+		for _, part in ipairs(parts) do
+			local partName = ""
+			pcall(function() partName = lower(part.Name) end)
+			if string.find(partName, "muzzle", 1, true) or string.find(partName, "flash", 1, true)
+				or string.find(partName, "hand", 1, true) or string.find(partName, "arm", 1, true) then
+				return true
+			end
+		end
+		return false
+	end
 
-			local segH = fullH / HEALTH_SEGMENTS
-			for i = 1, HEALTH_SEGMENTS do
-				local seg = entry.healthGrad[i]
-				local segBottomY = bottomY - (i - 1) * segH
-				local segTopY    = bottomY - i * segH
-				if segBottomY <= fillTopY + 0.5 then
-					seg.Visible = false
-				else
-					if segTopY < fillTopY then segTopY = fillTopY end
-					seg.From = v2new(barX, segBottomY)
-					seg.To   = v2new(barX, segTopY)
-					seg.Color = cHpLow:Lerp(cHpHigh, (i - 0.5) / HEALTH_SEGMENTS)
-					seg.Visible = true
+	function OVX.refreshViewModels()
+		table.clear(viewRoots)
+		table.clear(viewParts)
+		local cam = Workspace.CurrentCamera
+		if not cam then return end
+		local seen = {}
+		local function consider(obj)
+			if not obj or seen[obj] then return end
+			local candidate = false
+			pcall(function()
+				candidate = obj:IsA("Model") or obj:IsA("Folder") or obj:IsA("Tool")
+					or obj:IsA("Accessory") or obj:IsA("BasePart")
+			end)
+			if candidate and looksLikeViewRoot(obj) then
+				seen[obj] = true
+				viewRoots[#viewRoots + 1] = obj
+			end
+		end
+		local function scanLayer(list, depth)
+			if type(list) ~= "table" then return end
+			for _, obj in ipairs(list) do
+				consider(obj)
+				if depth < 2 then
+					local kids
+					pcall(function() kids = obj:GetChildren() end)
+					if type(kids) == "table" then scanLayer(kids, depth + 1) end
 				end
 			end
-		else
-			entry.healthOutline.Visible = false
-			for i = 1, HEALTH_SEGMENTS do entry.healthGrad[i].Visible = false end
 		end
-
-		-- name (top center)
-		if fNames then
-			entry.name.Text = fDisplayN and player.DisplayName or player.Name
-			entry.name.Position = v2new(BoxPos.X + BoxSize.X / 2, BoxPos.Y - 16)
-			entry.name.Color = cName
-			entry.name.Visible = true
-		else
-			entry.name.Visible = false
-		end
-
-		-- health % text (left of the bar)
-		if fHealthText then
-			entry.healthText.Text = tostring(floor((hum.Health / (hum.MaxHealth > 0 and hum.MaxHealth or 1)) * 100 + 0.5))
-			entry.healthText.Position = v2new(BoxPos.X - 14, BoxPos.Y - 2)
-			entry.healthText.Visible = true
-		else
-			entry.healthText.Visible = false
-		end
-
-		-- distance (stacks under the box)
-		if fDistance then
-			entry.distance.Text = "[" .. floor(dist) .. "m]"
-			entry.distance.Position = v2new(BoxPos.X + BoxSize.X / 2, bottomStack)
-			entry.distance.Color = cDist
-			entry.distance.Visible = true
-			bottomStack = bottomStack + 15
-		else
-			entry.distance.Visible = false
-		end
-
-		-- held item (tools / guns / anything)
-		if fWeapon then
-			entry.weapon.Text = heldLabelOf(model)
-			entry.weapon.Position = v2new(BoxPos.X + BoxSize.X / 2, bottomStack)
-			entry.weapon.Color = cWeapon
-			entry.weapon.Visible = true
-			bottomStack = bottomStack + 15
-		else
-			entry.weapon.Visible = false
-		end
-
-		-- view angle
-		if fViewAngle and head then
-			local hp = camera:WorldToViewportPoint(head.Position)
-			local lv = camera:WorldToViewportPoint((head.CFrame + head.CFrame.LookVector * viewSize).Position)
-			entry.viewAngle.From = v2new(hp.X, hp.Y)
-			entry.viewAngle.To = v2new(lv.X, lv.Y)
-			entry.viewAngle.Color = cView
-			entry.viewAngle.Visible = true
-		else
-			entry.viewAngle.Visible = false
-		end
-
-		-- tracer
-		if fTracers then
-			local fromY = (fTracerFrom == "Top" and 0) or (fTracerFrom == "Center" and vpSize.Y / 2) or vpSize.Y
-			entry.tracer.From = v2new(vpSize.X / 2, fromY)
-			entry.tracer.To = v2new(root.X, root.Y)
-			entry.tracer.Color = cTracer
-			entry.tracer.Visible = true
-		else
-			entry.tracer.Visible = false
-		end
+		local top
+		pcall(function() top = cam:GetChildren() end)
+		scanLayer(top or {}, 0)
+		for _, root in ipairs(viewRoots) do collectViewParts(root, viewParts, 0, 6) end
 	end
-end))
 
--- cleanup hook for the top-level unload
-espUnload = function()
-	for _, entry in pairs(espPlayers) do removeAll(entry) end
-	table.clear(espPlayers)
+	function OVX.queueViewRefresh()
+		OVX.refreshViewModels()
+		if OVX.sciFiApply then pcall(OVX.sciFiApply) end
+		if OVX.skinReapply then pcall(OVX.skinReapply) end
+	end
+
+	local cameraEvents = {}
+	local function bindCameraEvents()
+		for _, conn in ipairs(cameraEvents) do pcall(function() conn:Disconnect() end) end
+		table.clear(cameraEvents)
+		local cam = Workspace.CurrentCamera
+		if not cam then return end
+		local function watch(event)
+			if event and event.Connect then
+				cameraEvents[#cameraEvents + 1] = event:Connect(function() OVX.queueViewRefresh() end)
+			end
+		end
+		watch(cam.ChildAdded)
+		watch(cam.ChildRemoved)
+		watch(cam.DescendantAdded)
+		watch(cam.DescendantRemoving)
+	end
+	bindCameraEvents()
+	bind(Workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+		bindCameraEvents()
+		OVX.queueViewRefresh()
+	end))
+	OVX.refreshViewModels()
+
+	function OVX.finalizeViewmodelCleanup()
+		OVX.restoreAllVmOriginals(true)
+		table.clear(viewRoots)
+		table.clear(viewParts)
+		for _, conn in ipairs(cameraEvents) do pcall(function() conn:Disconnect() end) end
+		table.clear(cameraEvents)
+	end
 end
 
+-- ================================================================
+-- // SCI-FI V2: HAND / GUN CHAMS + MUZZLE-TO-IMPACT BULLET TRACERS
+-- //   No second menu. Every material, preset, tracer and protection
+-- //   switch is driven by the Vault UI flags below.
+-- ================================================================
+do
+	local env = getgenv()
+	local previousSciFi = env.SciFiChams
+	local previousSciFiUnload = env.SciFiChamsUnload
+	local previousFireTest = env.fireTestTracer
+	if type(previousSciFiUnload) == "function" then pcall(previousSciFiUnload) end
+
+	local MATERIALS = {
+		"ForceField", "Neon", "Glass", "Glacier", "Foil", "DiamondPlate",
+		"CorrodedMetal", "Metal", "CrackedLava", "Ice", "Basalt", "Slate",
+		"Granite", "Pebble", "SmoothPlastic", "Marble", "Cobblestone",
+	}
+	local PRESETS = {
+		Cyan    = c3(0, 255, 255),
+		Magenta = c3(255, 0, 255),
+		Green   = c3(0, 255, 120),
+		Purple  = c3(155, 105, 230),
+		Gold    = c3(255, 205, 70),
+		Red     = c3(255, 60, 60),
+		White   = c3(255, 255, 255),
+		Dark    = c3(35, 35, 45),
+	}
+	local PRESET_NAMES = { "Cyan", "Magenta", "Green", "Purple", "Gold", "Red", "White", "Dark" }
+	OVX.sciFiMaterials = MATERIALS
+	OVX.sciFiPresets = PRESETS
+	OVX.sciFiPresetNames = PRESET_NAMES
+
+	local function presetColor(name, fallback)
+		return PRESETS[tostring(name or "")] or fallback or PRESETS.Cyan
+	end
+	local function resolveMaterial(name)
+		local ok, material = pcall(function() return Enum.Material[tostring(name or "ForceField")] end)
+		if ok and material then return material end
+		return Enum.Material.ForceField
+	end
+	local function partColor(prefix)
+		if flags[prefix .. "_use_preset"] ~= false then
+			return presetColor(flags[prefix .. "_preset"], PRESETS.Cyan)
+		end
+		return resolveColor(prefix .. "_color", PRESETS.Cyan)
+	end
+	local function tracerColor()
+		if flags["sf_tracer_use_preset"] ~= false then
+			return presetColor(flags["sf_tracer_preset"], PRESETS.Cyan)
+		end
+		return resolveColor("sf_tracer_color", PRESETS.Cyan)
+	end
+	local function impactColor()
+		return resolveColor("sf_tracer_impact_color", tracerColor())
+	end
+
+	local tracerRecords = {}
+	local sciFiAppliedParts = {}
+	local function destroyRecord(record)
+		if not record or record.destroyed then return end
+		record.destroyed = true
+		for _, instance in ipairs(record.instances or {}) do
+			pcall(function() instance:Destroy() end)
+		end
+	end
+	local function trimTracers()
+		local maxCount = clamp(tonumber(flags["sf_tracer_max"]) or 24, 1, 80)
+		while #tracerRecords > maxCount do
+			local old = table.remove(tracerRecords, 1)
+			destroyRecord(old)
+		end
+	end
+	local function trackRecord(record)
+		tracerRecords[#tracerRecords + 1] = record
+		trimTracers()
+	end
+	function OVX.clearSciFiTracers()
+		for _, record in ipairs(tracerRecords) do destroyRecord(record) end
+		table.clear(tracerRecords)
+	end
+
+	local function tracerParent()
+		return Workspace.Terrain or Workspace
+	end
+	local function tracerNumber(flag, fallback, low, high)
+		return clamp(tonumber(flags[flag]) or fallback, low, high)
+	end
+	local function create3DTracer(startPos, endPos, color)
+		if typeof(startPos) ~= "Vector3" or typeof(endPos) ~= "Vector3" then return end
+		local parent = tracerParent()
+		local a0, a1, beam = Instance.new("Attachment"), Instance.new("Attachment"), Instance.new("Beam")
+		local width = tracerNumber("sf_tracer_width", 0.2, 0.02, 3)
+		local segments = math.floor(tracerNumber("sf_tracer_segments", 1, 1, 20) + 0.5)
+		local lifetime = tracerNumber("sf_tracer_lifetime", 0.25, 0.03, 3)
+		pcall(function()
+			a0.Parent = parent
+			a1.Parent = parent
+			a0.WorldPosition = startPos
+			a1.WorldPosition = endPos
+			beam.Parent = parent
+			beam.Attachment0 = a0
+			beam.Attachment1 = a1
+			beam.Width0 = width
+			beam.Width1 = width
+			beam.Segments = segments
+			beam.LightEmission = tracerNumber("sf_tracer_glow", 5, 0, 10) / 10
+			beam.LightInfluence = tracerNumber("sf_tracer_light_influence", 0, 0, 10) / 10
+			beam.FaceCamera = flags["sf_tracer_face_camera"] ~= false
+			beam.Enabled = true
+		end)
+		pcall(function() beam.Color = ColorSequence.new(color, color) end)
+		local record = { instances = { a0, a1, beam } }
+		trackRecord(record)
+		if type(task) == "table" and type(task.delay) == "function" then
+			task.delay(lifetime, function() destroyRecord(record) end)
+		end
+	end
+	local function createImpact(position, color)
+		if flags["sf_tracer_impact_enabled"] == false or typeof(position) ~= "Vector3" then return end
+		local size = tracerNumber("sf_tracer_impact_size", 0.3, 0.05, 3)
+		local lifetime = tracerNumber("sf_tracer_lifetime", 0.25, 0.03, 3)
+		local part = Instance.new("Part")
+		pcall(function()
+			part.Name = "OVXSciFiImpact"
+			part.Size = v3new(size, size, size)
+			part.Shape = Enum.PartType.Ball
+			part.Material = Enum.Material.Neon
+			part.Color = color
+			part.Transparency = 0.2
+			part.CanCollide = false
+			part.Anchored = true
+			part.CFrame = CFrame.new(position)
+			part.Parent = tracerParent()
+		end)
+		local record = { instances = { part } }
+		trackRecord(record)
+		if type(task) == "table" and type(task.delay) == "function" then
+			task.delay(lifetime, function() destroyRecord(record) end)
+		end
+	end
+	function OVX.fireTracer(startPos, endPos, color)
+		color = color or tracerColor()
+		create3DTracer(startPos, endPos, color)
+		createImpact(endPos, impactColor())
+	end
+
+	local function findMuzzles()
+		local out = {}
+		for _, part in ipairs(OVX.viewModelParts or {}) do
+			local name = OVX.lowerName(part.Name)
+			if string.find(name, "muzzle", 1, true) or string.find(name, "flash", 1, true) then
+				pcall(function() out[#out + 1] = part.Position end)
+			end
+		end
+		if #out == 0 then
+			local cam = Workspace.CurrentCamera
+			if cam then
+				pcall(function() out[1] = cam.CFrame.Position + cam.CFrame.LookVector * 2 end)
+			end
+		end
+		if #out == 0 then out[1] = v3new(0, 0, 0) end
+		return out
+	end
+	local function raycastImpact(start, direction, range)
+		if flags["sf_tracer_follow_sa"] ~= false then
+			local target = OVX.saTarget
+			if target then
+				if typeof(target.point) == "Vector3" then return target.point end
+				if target.part and target.part.Parent then
+					local point
+					pcall(function() point = target.part.Position end)
+					if typeof(point) == "Vector3" then return point end
+				end
+			end
+		end
+		if flags["sf_tracer_raycast"] == false then return start + direction * range end
+		local params = RaycastParams.new()
+		pcall(function()
+			params.FilterType = Enum.RaycastFilterType.Exclude
+			local filter = { lp.Character }
+			for _, root in ipairs(OVX.viewModels or {}) do filter[#filter + 1] = root end
+			params.FilterDescendantsInstances = filter
+		end)
+		local hit
+		pcall(function() hit = Workspace:Raycast(start, direction * range, params) end)
+		if hit and typeof(hit.Position) == "Vector3" then return hit.Position end
+		return start + direction * range
+	end
+	local function shotFromArgs(...)
+		local args = { ... }
+		local claimOrigin
+		for _, value in ipairs(args) do
+			if type(value) == "table" then
+				pcall(function()
+					if typeof(value.o) == "Vector3" then claimOrigin = value.o end
+					if typeof(value.origin) == "Vector3" then claimOrigin = value.origin end
+				end)
+			end
+		end
+		local v1 = typeof(args[1]) == "Vector3" and args[1] or nil
+		local v2 = typeof(args[2]) == "Vector3" and args[2] or nil
+		local start, direction
+		if v1 and v2 then
+			local m1, m2 = v1.Magnitude, v2.Magnitude
+			if m2 > 0.001 and math.abs(m2 - 1) < 0.25 then
+				start, direction = v1, v2
+			elseif claimOrigin and m1 > 0.001 and math.abs(m1 - 1) < 0.25 then
+				start, direction = claimOrigin, v1
+			elseif m1 > 0.001 then
+				start, direction = v1, v2.Unit
+			end
+		elseif v1 then
+			if claimOrigin then
+				start = claimOrigin
+				direction = v1.Magnitude > 0.001 and v1.Unit or nil
+			else
+				start = v1
+			end
+		end
+		local cam = Workspace.CurrentCamera
+		if typeof(start) ~= "Vector3" then
+			start = cam and (cam.CFrame.Position + cam.CFrame.LookVector * 2) or v3new(0, 0, 0)
+		end
+		if typeof(direction) ~= "Vector3" or direction.Magnitude < 0.001 then
+			direction = cam and cam.CFrame.LookVector or v3new(0, 0, -1)
+		end
+		if math.abs(direction.Magnitude - 1) > 0.25 then direction = direction.Unit end
+		return start, direction
+	end
+	local function isShotRemote(remote)
+		if remote == nil then return true end
+		local name, path = "", ""
+		pcall(function() name = OVX.lowerName(remote.Name) end)
+		pcall(function() path = OVX.lowerName(remote:GetFullName()) end)
+		return string.find(name, "fire", 1, true) or string.find(name, "launch", 1, true)
+			or string.find(path, "fire", 1, true) or string.find(path, "bowremotes", 1, true)
+	end
+	function OVX.sciFiTracer(remote, ...)
+		if flags["sf_tracers_enabled"] == false or not isShotRemote(remote) then return end
+		if flags["sf_tracer_include_bow"] == false then
+			local name, path = "", ""
+			pcall(function() name = OVX.lowerName(remote and remote.Name) end)
+			pcall(function() path = OVX.lowerName(remote and remote:GetFullName()) end)
+			if string.find(name, "bow", 1, true) or string.find(path, "bow", 1, true) then return end
+		end
+		local start, direction = shotFromArgs(...)
+		local muzzles = findMuzzles()
+		if flags["sf_tracer_use_muzzle"] ~= false then start = muzzles[1] or start end
+		local range = clamp(tonumber(flags["sf_tracer_range"]) or 1000, 50, 5000)
+		local finish = raycastImpact(start, direction, range)
+		local color = tracerColor()
+		OVX.fireTracer(start, finish, color)
+		if flags["sf_tracer_double_gun"] ~= false and #muzzles > 1 then
+			OVX.fireTracer(muzzles[2], finish, color)
+		end
+	end
+	function OVX.fireTestTracer()
+		local muzzles = findMuzzles()
+		local cam = Workspace.CurrentCamera
+		local start = muzzles[1] or (cam and (cam.CFrame.Position + cam.CFrame.LookVector * 2) or v3new())
+		local direction = cam and cam.CFrame.LookVector or v3new(0, 0, -1)
+		local range = clamp(tonumber(flags["sf_tracer_range"]) or 1000, 50, 5000)
+		local finish = raycastImpact(start, direction, range)
+		local color = tracerColor()
+		OVX.fireTracer(start, finish, color)
+		if flags["sf_tracer_double_gun"] ~= false and #muzzles > 1 then
+			OVX.fireTracer(muzzles[2], finish, color)
+		end
+		return true
+	end
+
+	local function applyPart(part)
+		local ok, isPart = pcall(function() return part:IsA("BasePart") end)
+		if not ok or not isPart then return end
+		if flags["sf_protect_muzzle"] ~= false and OVX.isProtectedViewPart(part) then return end
+		local hand = OVX.isHandViewPart(part)
+		local enabled = (hand and flags["sf_hands_enabled"] == true)
+			or (not hand and flags["sf_gun_enabled"] == true)
+		if not enabled then
+			if sciFiAppliedParts[part] then
+				OVX.restoreVmOriginal(part)
+				sciFiAppliedParts[part] = nil
+			end
+			return
+		end
+		OVX.saveVmOriginal(part)
+		sciFiAppliedParts[part] = true
+		local prefix = hand and "sf_hand" or "sf_gun"
+		local material = resolveMaterial(flags[prefix .. "_material"])
+		local color = partColor(prefix)
+		local transparency = clamp((tonumber(flags[prefix .. "_transparency"]) or 0) / 10, 0, 1)
+		local reflectance = clamp((tonumber(flags[prefix .. "_reflectance"]) or 2) / 10, 0, 1)
+		pcall(function()
+			part.Material = material
+			part.Color = color
+			part.Transparency = transparency
+			part.Reflectance = reflectance
+		end)
+	end
+	function OVX.sciFiApply()
+		OVX.refreshViewModels()
+		local roots = OVX.viewModels or {}
+		local limit = flags["sf_double_gun_fix"] ~= false and #roots or math.min(1, #roots)
+		local parts = {}
+		for index = 1, limit do
+			table.clear(parts)
+			OVX.collectViewParts(roots[index], parts, 0, 6)
+			for _, part in ipairs(parts) do applyPart(part) end
+		end
+	end
+	function OVX.sciFiRestore(reapplySkin)
+		OVX.refreshViewModels()
+		for part in pairs(sciFiAppliedParts) do OVX.restoreVmOriginal(part) end
+		table.clear(sciFiAppliedParts)
+		if reapplySkin ~= false and OVX.skinReapply then pcall(OVX.skinReapply) end
+	end
+
+	local sciFiKeys = {
+		"sf_hands_enabled", "sf_gun_enabled", "sf_protect_muzzle", "sf_double_gun_fix",
+		"sf_hand_material", "sf_hand_preset", "sf_hand_use_preset", "sf_hand_color",
+		"sf_hand_transparency", "sf_hand_reflectance", "sf_gun_material", "sf_gun_preset",
+		"sf_gun_use_preset", "sf_gun_color", "sf_gun_transparency", "sf_gun_reflectance",
+	}
+	local function sciFiHash()
+		local rows = {}
+		for index, key in ipairs(sciFiKeys) do rows[index] = tostring(flags[key]) end
+		return table.concat(rows, "|")
+	end
+	local lastHash, lastRefresh = sciFiHash(), 0
+	bind(RunService.Heartbeat:Connect(function()
+		local hz = clamp(tonumber(flags["sf_vmodel_refresh_hz"]) or 5, 1, 20)
+		local now = os.clock()
+		if now - lastRefresh < 1 / hz then return end
+		lastRefresh = now
+		local hash = sciFiHash()
+		if hash ~= lastHash or flags["sf_hands_enabled"] or flags["sf_gun_enabled"] then
+			lastHash = hash
+			pcall(OVX.queueViewRefresh)
+		end
+	end))
+
+	local sciFiUnloaded = false
+	local sciFiObject
+	function OVX.sciFiUnload()
+		if sciFiUnloaded then return end
+		sciFiUnloaded = true
+		OVX.clearSciFiTracers()
+		pcall(OVX.sciFiRestore, false)
+		if env.SciFiChams == sciFiObject then env.SciFiChams = previousSciFi or nil end
+		if env.SciFiChamsUnload == OVX.sciFiUnload then env.SciFiChamsUnload = previousSciFiUnload or nil end
+		if env.fireTestTracer == OVX.fireTestTracer then env.fireTestTracer = previousFireTest or nil end
+		OVX.sciFiUnload = nil
+	end
+	sciFiObject = {
+		Settings = flags, Config = flags, Materials = MATERIALS, Presets = PRESETS,
+		PresetNames = PRESET_NAMES, Apply = OVX.sciFiApply, Restore = OVX.sciFiRestore,
+		FireTestTracer = OVX.fireTestTracer, fireTestTracer = OVX.fireTestTracer,
+		ClearTracers = OVX.clearSciFiTracers, Unload = OVX.sciFiUnload,
+	}
+	env.SciFiChams = sciFiObject
+	env.SciFiChamsUnload = OVX.sciFiUnload
+	env.fireTestTracer = OVX.fireTestTracer
+	bind({ Disconnect = function() if OVX.sciFiUnload then pcall(OVX.sciFiUnload) end end })
+end
+
+-- ================================================================
+-- // SKIN CHANGER — GLOBAL API + PER-GUN / ALL-GUN VISUALS
+-- //   getgenv().SetSkin("Assault Rifle", "Tempered")
+-- //   getgenv().SetAllSkins("Banana")
+-- //   getgenv().ResetSkins()
+-- //   getgenv().selectWeapon("Python Revolver")
+-- ================================================================
+do
+	local env = getgenv()
+	local previousSkinChanger = env.SkinChanger
+	local previousSkinUnload = env.SkinChangerUnload
+	local previousSetSkin = env.SetSkin
+	local previousSetAllSkins = env.SetAllSkins
+	local previousResetSkins = env.ResetSkins
+	local previousSelectWeapon = env.selectWeapon
+	if type(previousSkinUnload) == "function" then pcall(previousSkinUnload) end
+	if type(previousSkinChanger) == "table" and type(previousSkinChanger.Unload) == "function" then
+		pcall(previousSkinChanger.Unload)
+	end
+
+	local WEAPONS = {
+		"Assault Rifle", "Bolt Action Rifle", "Python Revolver", "Semi-Automatic Pistol",
+		"Pump Shotgun", "Thompson", "Custom SMG", "MP5A4", "M249",
+		"LR-300 Assault Rifle", "M92 Pistol", "Revolver", "Semi-Automatic Rifle",
+		"Double Barrel Shotgun", "Waterpipe Shotgun", "Eoka Pistol", "Nailgun",
+	}
+	local SKINS = { "Default", "Forgefire", "Tempered", "Banana", "CrystalHeart", "WinterHunter" }
+	local SKIN_FALLBACK = {
+		forgefire   = { material = "CrackedLava", color = c3(255, 95, 35) },
+		tempered    = { material = "Metal", color = c3(170, 180, 195) },
+		banana      = { material = "SmoothPlastic", color = c3(255, 225, 55) },
+		crystalheart= { material = "Glass", color = c3(255, 90, 210) },
+		winterhunter= { material = "Ice", color = c3(145, 220, 255) },
+	}
+	OVX.skinWeaponNames = WEAPONS
+	OVX.skinKnownNames = SKINS
+
+	local config, assetsByName = {}, {}
+	local discoveredWeapons, discoveredSkins, skinClones, touchedParts = {}, {}, {}, {}
+	local charConns = {}
+	OVX.skinConfig = config
+
+	local function normalize(value) return string.lower(tostring(value or "")) end
+	local function addUnique(list, value)
+		if type(value) ~= "string" or value == "" then return end
+		local key = normalize(value)
+		for _, existing in ipairs(list) do
+			if normalize(existing) == key then return end
+		end
+		list[#list + 1] = value
+	end
+	local function mergedList(base, discovered)
+		local out, seen = {}, {}
+		local function addList(list)
+			for _, value in ipairs(list) do
+				local key = normalize(value)
+				if not seen[key] then seen[key] = true; out[#out + 1] = value end
+			end
+		end
+		addList(base)
+		addList(discovered)
+		table.sort(out)
+		return out
+	end
+	local function getWeapons() return mergedList(WEAPONS, discoveredWeapons) end
+	local function getSkins() return mergedList(SKINS, discoveredSkins) end
+
+	local assetCount = 0
+	local function indexAsset(obj)
+		if not obj or flags["skin_discover_assets"] == false then return end
+		local limit = clamp(tonumber(flags["skin_asset_limit"]) or 1200, 100, 5000)
+		if assetCount >= limit then return end
+		local name
+		pcall(function() name = obj.Name end)
+		if type(name) ~= "string" or name == "" then return end
+		local key, parentName = normalize(name), ""
+		pcall(function() if obj.Parent then parentName = normalize(obj.Parent.Name) end end)
+		local bucket = assetsByName[key]
+		if not bucket then bucket = {}; assetsByName[key] = bucket end
+		bucket[#bucket + 1] = obj
+		assetCount = assetCount + 1
+		local isSkin = string.find(key, "skin", 1, true) or string.find(parentName, "skin", 1, true)
+			or string.find(key, "forgefire", 1, true) or string.find(key, "crystalheart", 1, true)
+			or string.find(key, "winterhunter", 1, true)
+		local isWeapon = string.find(key, "rifle", 1, true) or string.find(key, "pistol", 1, true)
+			or string.find(key, "shotgun", 1, true) or string.find(key, "revolver", 1, true)
+			or string.find(key, "smg", 1, true) or string.find(key, "bow", 1, true)
+			or string.find(key, "gun", 1, true) or string.find(parentName, "weapon", 1, true)
+			or string.find(parentName, "viewmodel", 1, true)
+		if isSkin and #name <= 40 then addUnique(discoveredSkins, name) end
+		if isWeapon and #name <= 50 then addUnique(discoveredWeapons, name) end
+	end
+	local function scanRoot(root)
+		if not root or flags["skin_discover_assets"] == false then return end
+		local descendants
+		local ok = pcall(function() descendants = root:GetDescendants() end)
+		if not ok or type(descendants) ~= "table" then return end
+		for index = 1, math.min(#descendants, clamp(tonumber(flags["skin_asset_limit"]) or 1200, 100, 5000)) do
+			indexAsset(descendants[index])
+		end
+	end
+	local function findAsset(name, kind)
+		if flags["skin_discover_assets"] == false then return nil, nil end
+		local key = normalize(name)
+		if key == "" then return nil, nil end
+		local maxDepth = clamp(tonumber(flags["skin_asset_depth"]) or 5, 2, 8)
+		local function bucketParts(bucket)
+			if type(bucket) ~= "table" then return nil end
+			for index = #bucket, 1, -1 do
+				local parts = OVX.collectViewParts(bucket[index], {}, 0, maxDepth)
+				if #parts > 0 then return bucket[index], parts end
+			end
+			return nil
+		end
+		local asset, parts = bucketParts(assetsByName[key])
+		if asset then return asset, parts end
+		for assetKey, bucket in pairs(assetsByName) do
+			if string.find(assetKey, key, 1, true) or string.find(key, assetKey, 1, true) then
+				asset, parts = bucketParts(bucket)
+				if asset then return asset, parts end
+			end
+		end
+		return nil, nil
+	end
+	local function skinMaterial(name)
+		local ok, material = pcall(function() return Enum.Material[tostring(name or "ForceField")] end)
+		if ok and material then return material end
+		return Enum.Material.ForceField
+	end
+	local function applyFallback(part, skinName)
+		local fallback = SKIN_FALLBACK[normalize(skinName)]
+		local material = fallback and fallback.material or flags["skin_fallback_material"] or "ForceField"
+		local color = fallback and fallback.color or resolveColor("skin_fallback_color", c3(255, 180, 80))
+		local transparency = clamp((tonumber(flags["skin_fallback_transparency"]) or 0) / 10, 0, 1)
+		local reflectance = clamp((tonumber(flags["skin_fallback_reflectance"]) or 2) / 10, 0, 1)
+		pcall(function()
+			part.Material = skinMaterial(material)
+			part.Color = color
+			part.Transparency = transparency
+			part.Reflectance = reflectance
+		end)
+	end
+	local function copyPartProperties(source, target)
+		for _, property in ipairs(OVX.vmPropertyNames or {}) do
+			pcall(function()
+				local value = source[property]
+				if value ~= nil then target[property] = value end
+			end)
+		end
+		local appearance
+		pcall(function() appearance = source:FindFirstChildOfClass("SurfaceAppearance") end)
+		if appearance then
+			pcall(function()
+				local clone = appearance:Clone()
+				clone.Parent = target
+				skinClones[#skinClones + 1] = clone
+			end)
+		end
+	end
+	local function currentWeaponName()
+		local character = lp.Character
+		local tool
+		pcall(function() tool = character and character:FindFirstChildOfClass("Tool") end)
+		if tool then return tool.Name end
+		for _, root in ipairs(OVX.viewModels or {}) do
+			local name = ""
+			pcall(function() name = root.Name or "" end)
+			if name ~= "" then return name end
+		end
+		return nil
+	end
+	local function applySkinVisual(weaponName, skinName)
+		if flags["skin_enabled"] == false then return false end
+		local current = currentWeaponName()
+		local wanted = normalize(weaponName)
+		if current and normalize(current) ~= wanted
+			and not string.find(normalize(current), wanted, 1, true)
+			and not string.find(wanted, normalize(current), 1, true) then
+			return false
+		end
+		OVX.refreshViewModels()
+		local asset, assetParts = findAsset(skinName, "skin")
+		local parts = {}
+		local maxDepth = clamp(tonumber(flags["skin_asset_depth"]) or 5, 2, 8)
+		for _, root in ipairs(OVX.viewModels or {}) do
+			OVX.collectViewParts(root, parts, 0, maxDepth)
+		end
+		if #parts == 0 then parts = OVX.viewModelParts or {} end
+		local sourceByName = {}
+		if assetParts then
+			for _, part in ipairs(assetParts) do
+				pcall(function() sourceByName[normalize(part.Name)] = part end)
+			end
+		end
+		for _, part in ipairs(parts) do
+			local hand = OVX.isHandViewPart(part)
+			local protected = flags["sf_protect_muzzle"] ~= false and OVX.isProtectedViewPart(part)
+			if not hand and not protected then
+				OVX.saveVmOriginal(part)
+				touchedParts[part] = true
+				local source = nil
+				pcall(function() source = sourceByName[normalize(part.Name)] end)
+				source = source or (assetParts and assetParts[1])
+				if source then copyPartProperties(source, part) else applyFallback(part, skinName) end
+			end
+		end
+		if flags["sf_hands_enabled"] or flags["sf_gun_enabled"] then
+			if OVX.sciFiApply then pcall(OVX.sciFiApply) end
+		end
+		return asset ~= nil
+	end
+	local function restoreVisuals(reapplySciFi)
+		for _, clone in ipairs(skinClones) do pcall(function() clone:Destroy() end) end
+		table.clear(skinClones)
+		for part in pairs(touchedParts) do OVX.restoreVmOriginal(part) end
+		table.clear(touchedParts)
+		if reapplySciFi ~= false and OVX.sciFiApply then pcall(OVX.sciFiApply) end
+	end
+	local function restoreSkinLayers()
+		pcall(restoreVisuals, false)
+		if OVX.sciFiRestore then pcall(OVX.sciFiRestore, false) end
+		if OVX.sciFiApply then pcall(OVX.sciFiApply) end
+	end
+	local reapplyCurrent
+	local function deferSkin()
+		local delay = clamp(tonumber(flags["skin_delay"]) or 0.05, 0, 1)
+		if type(task) == "table" and type(task.delay) == "function" then
+			task.delay(delay, function() pcall(reapplyCurrent) end)
+		else
+			pcall(reapplyCurrent)
+		end
+	end
+	reapplyCurrent = function()
+		if flags["skin_enabled"] == false or flags["skin_auto_reapply"] == false then return end
+		local weapon = currentWeaponName()
+		if not weapon then return end
+		local skin = config[weapon]
+		if not skin then
+			for name, value in pairs(config) do
+				if normalize(weapon) == normalize(name)
+					or string.find(normalize(weapon), normalize(name), 1, true) then
+					skin = value
+					break
+				end
+			end
+		end
+		if skin then applySkinVisual(weapon, skin) end
+	end
+	OVX.skinReapply = reapplyCurrent
+	local function refreshSkinUI()
+		if OVX.skinRefreshUI then pcall(OVX.skinRefreshUI) end
+	end
+	local function setSkinInternal(weaponName, skinName, callExternal)
+		weaponName = tostring(weaponName or "")
+		skinName = tostring(skinName or "Default")
+		if weaponName == "" then return false end
+		local key = normalize(skinName)
+		local isReset = skinName == "" or key == "default" or key == "reset" or key == "none"
+		if isReset then
+			config[weaponName] = nil
+			if callExternal and type(previousSetSkin) == "function" then
+				pcall(previousSetSkin, weaponName, "Default")
+			end
+			restoreSkinLayers()
+			if flags["skin_auto_reapply"] ~= false then deferSkin() end
+		else
+			config[weaponName] = skinName
+			if callExternal and type(previousSetSkin) == "function" then
+				pcall(previousSetSkin, weaponName, skinName)
+			end
+			restoreSkinLayers()
+			applySkinVisual(weaponName, skinName)
+		end
+		if flags["skin_debug"] then print("[OVX] skin " .. weaponName .. " -> " .. skinName) end
+		refreshSkinUI()
+		return true
+	end
+	local function setAllSkins(skinName)
+		skinName = tostring(skinName or "Default")
+		if type(previousSetAllSkins) == "function" then pcall(previousSetAllSkins, skinName) end
+		restoreSkinLayers()
+		local key = normalize(skinName)
+		local isReset = skinName == "" or key == "default" or key == "reset" or key == "none"
+		if isReset then
+			table.clear(config)
+		else
+			for _, weapon in ipairs(getWeapons()) do config[weapon] = skinName end
+			deferSkin()
+		end
+		if flags["skin_debug"] then print("[OVX] all skins -> " .. skinName) end
+		refreshSkinUI()
+		return true
+	end
+	local function resetSkins()
+		if type(previousResetSkins) == "function" then pcall(previousResetSkins) end
+		table.clear(config)
+		restoreSkinLayers()
+		if flags["skin_debug"] then print("[OVX] skins reset") end
+		refreshSkinUI()
+		return true
+	end
+	local function selectWeapon(name)
+		name = tostring(name or WEAPONS[1])
+		if type(previousSelectWeapon) == "function" then pcall(previousSelectWeapon, name) end
+		local setter = library.config_flags["skin_weapon"]
+		if setter then pcall(setter, name) else flags["skin_weapon"] = name end
+		local customSetter = library.config_flags["skin_weapon_custom"]
+		if customSetter then pcall(customSetter, "") else flags["skin_weapon_custom"] = "" end
+		if flags["skin_debug"] then print("[OVX] selected weapon " .. name) end
+		return name
+	end
+	function OVX.skinSelectedWeapon()
+		local custom = flags["skin_weapon_custom"]
+		if type(custom) == "string" and custom ~= "" then return custom end
+		return flags["skin_weapon"] or WEAPONS[1]
+	end
+	function OVX.skinSelectedSkin()
+		local custom = flags["skin_skin_custom"]
+		if type(custom) == "string" and custom ~= "" then return custom end
+		return flags["skin_skin"] or "Tempered"
+	end
+	function OVX.skinApplyMode()
+		if flags["skin_apply_mode"] == "All Guns" then
+			return setAllSkins(OVX.skinSelectedSkin())
+		end
+		return setSkinInternal(OVX.skinSelectedWeapon(), OVX.skinSelectedSkin(), true)
+	end
+	function OVX.skinApplyAll()
+		return setAllSkins(OVX.skinSelectedSkin())
+	end
+	function OVX.skinResetWeapon()
+		return setSkinInternal(OVX.skinSelectedWeapon(), "Default", true)
+	end
+	function OVX.skinResetAll()
+		return resetSkins()
+	end
+	function OVX.skinPrintConfig()
+		local rows = {}
+		for weapon, skin in pairs(config) do rows[#rows + 1] = weapon .. "=" .. skin end
+		table.sort(rows)
+		print("[OVX] skin map: " .. (#rows > 0 and table.concat(rows, ", ") or "empty"))
+		return #rows
+	end
+	OVX.skinSelectWeapon = selectWeapon
+	OVX.skinGetWeapons = getWeapons
+	OVX.skinGetSkins = getSkins
+
+	local function bindCharacter(character)
+		for _, conn in ipairs(charConns) do pcall(function() conn:Disconnect() end) end
+		table.clear(charConns)
+		if not character then return end
+		local function watch(event)
+			if event and event.Connect then
+				charConns[#charConns + 1] = event:Connect(function() deferSkin() end)
+			end
+		end
+		watch(character.ChildAdded)
+		watch(character.ChildRemoved)
+		watch(character.DescendantAdded)
+		deferSkin()
+	end
+	bind(lp.CharacterAdded:Connect(bindCharacter))
+	bind(lp.CharacterRemoving:Connect(function()
+		for _, conn in ipairs(charConns) do pcall(function() conn:Disconnect() end) end
+		table.clear(charConns)
+	end))
+	bindCharacter(lp.Character)
+
+	local assetRoots = {
+		RepStorage, game:GetService("ReplicatedFirst"), lp,
+		Workspace.CurrentCamera, game:GetService("Lighting"),
+		game:GetService("StarterPack"), CoreGui,
+	}
+	for _, root in ipairs(assetRoots) do
+		scanRoot(root)
+		if root and root.DescendantAdded then
+			bind(root.DescendantAdded:Connect(function(obj)
+				indexAsset(obj)
+				refreshSkinUI()
+				deferSkin()
+			end))
+		end
+	end
+
+	local ourSetSkin = function(weapon, skin) return setSkinInternal(weapon, skin, true) end
+	local ourSetAllSkins = setAllSkins
+	local ourResetSkins = resetSkins
+	local ourSelectWeapon = selectWeapon
+	local skinObject = {
+		Config = config, Settings = flags, SetSkin = ourSetSkin,
+		SetAll = ourSetAllSkins, SetAllSkins = ourSetAllSkins,
+		Reset = ourResetSkins, ResetSkins = ourResetSkins,
+		SetWeapon = selectWeapon, SelectWeapon = selectWeapon,
+		GetWeapons = getWeapons, GetSkins = getSkins,
+		Reapply = reapplyCurrent, PrintConfig = OVX.skinPrintConfig,
+	}
+	local skinUnloaded = false
+	function OVX.skinUnload()
+		if skinUnloaded then return end
+		skinUnloaded = true
+		for _, conn in ipairs(charConns) do pcall(function() conn:Disconnect() end) end
+		table.clear(charConns)
+		restoreVisuals(false)
+		table.clear(config)
+		table.clear(assetsByName)
+		table.clear(discoveredWeapons)
+		table.clear(discoveredSkins)
+		table.clear(skinClones)
+		if type(env.SkinChangerUnload) == "function" and env.SkinChangerUnload ~= OVX.skinUnload then
+			pcall(env.SkinChangerUnload)
+		end
+		if type(env.SkinChanger) == "table" and env.SkinChanger ~= skinObject
+			and type(env.SkinChanger.Unload) == "function" then
+			pcall(env.SkinChanger.Unload)
+		end
+		if env.SkinChanger == skinObject then env.SkinChanger = previousSkinChanger or nil end
+		if env.SetSkin == ourSetSkin then env.SetSkin = previousSetSkin or nil end
+		if env.SetAllSkins == ourSetAllSkins then env.SetAllSkins = previousSetAllSkins or nil end
+		if env.ResetSkins == ourResetSkins then env.ResetSkins = previousResetSkins or nil end
+		if env.selectWeapon == ourSelectWeapon then env.selectWeapon = previousSelectWeapon or nil end
+		if env.SkinChangerUnload == OVX.skinUnload then env.SkinChangerUnload = previousSkinUnload or nil end
+		OVX.skinUnload = nil
+	end
+	skinObject.Unload = OVX.skinUnload
+	env.SkinChanger = skinObject
+	env.SetSkin = ourSetSkin
+	env.SetAllSkins = ourSetAllSkins
+	env.ResetSkins = ourResetSkins
+	env.selectWeapon = ourSelectWeapon
+	env.SkinChangerUnload = OVX.skinUnload
+	bind({ Disconnect = function() if OVX.skinUnload then pcall(OVX.skinUnload) end end })
+end
+
+-- ================================================================
+-- // PLAYER ESP — attached v5 custom-gradient engine, optimised
+-- //   Cached player list/connections, precomputed HSV gradient, 20 pooled
+-- //   health slices, staggered hide/draw frames, pooled LOS raycasts and
+-- //   a combined distance/weapon text. All settings come from Vault flags.
+-- ================================================================
+do
+	local env = getgenv()
+	if type(env.__vaultEspUnload) == "function" then pcall(env.__vaultEspUnload) end
+
+	local espConns, teardownDrawings, teardownInstances = {}, {}, {}
+	local pool, playerList = {}, {}
+	local frame = 0
+	local camera = Workspace.CurrentCamera
+	local colorFromHSV, colorToHSV = Color3.fromHSV, Color3.toHSV
+	local COLOR_BLACK = c3(0, 0, 0)
+	local HEALTH_SLICES = 20
+	local CORNER_DEFS = {
+		{ 0, 0, 1, 0 }, { 0, 0, 0, 1 },
+		{ 1, 0, -1, 0 }, { 1, 0, 0, 1 },
+		{ 0, 1, 1, 0 }, { 0, 1, 0, -1 },
+		{ 1, 1, -1, 0 }, { 1, 1, 0, -1 },
+	}
+	local FONT_MAP = { UI = 0, System = 1, Plex = 2, Monospace = 3 }
+
+	local function bindConn(conn)
+		bind(conn)
+		espConns[#espConns + 1] = conn
+		return conn
+	end
+	local function newDrawing(class, props)
+		local object = Drawingnew(class)
+		for key, value in pairs(props or {}) do object[key] = value end
+		teardownDrawings[#teardownDrawings + 1] = object
+		return object
+	end
+	local function newCham(props)
+		local object = Instance.new("Highlight")
+		pcall(function() object.Parent = CoreGui end)
+		for key, value in pairs(props or {}) do object[key] = value end
+		teardownInstances[#teardownInstances + 1] = object
+		return object
+	end
+	local function lerpGradColor(t, colorA, colorB)
+		local h1, s1, v1 = colorToHSV(colorA)
+		local h2, s2, v2 = colorToHSV(colorB)
+		local dh = h2 - h1
+		if dh > 0.5 then dh = dh - 1 end
+		if dh < -0.5 then dh = dh + 1 end
+		local h = (h1 + dh * t) % 1
+		local s = s1 + (s2 - s1) * t
+		local v = v1 + (v2 - v1) * t
+		return colorFromHSV(h, s, v)
+	end
+
+	local espSettings = {
+		enabled = true, maxDist = 0, fontSize = 13, font = 2,
+		box = { enabled = true, type = "Normal", color = c3(255,255,255), thickness = 1, outline = true },
+		filledBox = { enabled = false, color = c3(255,255,255), transparency = 0.6 },
+		healthBar = { enabled = true, outline = true, position = "Left", colorLow = c3(255,0,0), colorHigh = c3(0,255,0) },
+		healthText = { enabled = false, color = c3(255,255,255), matchGradient = false },
+		name = { enabled = true, displayName = true, color = c3(255,255,255) },
+		distance = { enabled = true, color = c3(200,200,200) },
+		weapon = { enabled = false, color = c3(255,220,80) },
+		viewAngle = { enabled = false, color = c3(255,255,255), length = 10 },
+		chams = {
+			enabled = false, visCheck = false, fillColor = c3(255,255,255), outlineColor = COLOR_BLACK,
+			fillTransparency = 0.4, outlineTransparency = 0,
+			visColor = c3(0,255,0), invisColor = c3(255,0,0),
+		},
+		tracer = { enabled = false, color = c3(255,255,255), origin = "Bottom" },
+	}
+	local function defaultIsEnemy(player)
+		if not getFlagBool("esp_team_check", false) then return true end
+		local relation = OVX.relation(player)
+		return relation ~= "team" and relation ~= "ally" and not sameTeam(player)
+	end
+	espSettings.isEnemy = defaultIsEnemy
+	local function syncEspSettings()
+		espSettings.enabled = getFlagBool("Enabled", true)
+		espSettings.maxDist = tonumber(flags["esp_max_dist"]) or 0
+		espSettings.fontSize = clamp(tonumber(flags["esp_font_size"]) or 13, 8, 24)
+		espSettings.font = FONT_MAP[flags["esp_font"] or "Plex"] or tonumber(flags["esp_font"]) or 2
+
+		espSettings.box.enabled = getFlagBool("Boxes", true)
+		espSettings.box.type = flags["Box_Type"] == "Corner" and "Corner" or "Normal"
+		espSettings.box.color = getFlagColor("Box_Color", c3(255,255,255))
+		espSettings.box.thickness = clamp(tonumber(flags["esp_box_thickness"]) or 1, 1, 6)
+		espSettings.box.outline = getFlagBool("esp_box_outline", true)
+
+		espSettings.filledBox.enabled = getFlagBool("esp_filled_box", false)
+		espSettings.filledBox.color = getFlagColor("esp_filled_color", c3(255,255,255))
+		espSettings.filledBox.transparency = clamp((tonumber(flags["esp_filled_transparency"]) or 6) / 10, 0, 1)
+
+		espSettings.healthBar.enabled = getFlagBool("Healthbar", true)
+		espSettings.healthBar.outline = getFlagBool("esp_health_outline", true)
+		espSettings.healthBar.position = flags["esp_health_position"] == "Top" and "Top" or "Left"
+		espSettings.healthBar.colorLow = getFlagColor("Health_Low", c3(255,0,0))
+		espSettings.healthBar.colorHigh = getFlagColor("Health_High", c3(0,255,0))
+
+		espSettings.healthText.enabled = getFlagBool("esp_health_text", false)
+		espSettings.healthText.color = getFlagColor("esp_health_text_color", c3(255,255,255))
+		espSettings.healthText.matchGradient = getFlagBool("esp_health_text_gradient", false)
+
+		espSettings.name.enabled = getFlagBool("Names", true)
+		espSettings.name.displayName = getFlagBool("esp_display_names", true)
+		espSettings.name.color = getFlagColor("Name_Color", c3(255,255,255))
+		espSettings.distance.enabled = getFlagBool("Distance", true)
+		espSettings.distance.color = getFlagColor("Distance_Color", c3(200,200,200))
+		espSettings.weapon.enabled = getFlagBool("Weapon", false)
+		espSettings.weapon.color = getFlagColor("Weapon_Color", c3(255,220,80))
+
+		espSettings.viewAngle.enabled = getFlagBool("esp_view_angle", false)
+		espSettings.viewAngle.color = getFlagColor("esp_viewangle_color", c3(255,255,255))
+		espSettings.viewAngle.length = clamp(tonumber(flags["esp_viewangle_size"]) or 10, 3, 30)
+
+		espSettings.chams.enabled = getFlagBool("esp_chams", false)
+		espSettings.chams.visCheck = getFlagBool("esp_cham_vis_check", false)
+		espSettings.chams.fillColor = getFlagColor("esp_cham_fill_color", c3(255,255,255))
+		espSettings.chams.outlineColor = getFlagColor("esp_cham_outline_color", COLOR_BLACK)
+		espSettings.chams.fillTransparency = clamp((tonumber(flags["esp_cham_fill_transparency"]) or 4) / 10, 0, 1)
+		espSettings.chams.outlineTransparency = clamp((tonumber(flags["esp_cham_outline_transparency"]) or 0) / 10, 0, 1)
+		espSettings.chams.visColor = getFlagColor("esp_cham_vis_color", c3(0,255,0))
+		espSettings.chams.invisColor = getFlagColor("esp_cham_invis_color", c3(255,0,0))
+
+		espSettings.tracer.enabled = getFlagBool("esp_tracers", false)
+		espSettings.tracer.color = getFlagColor("esp_tracer_color", c3(255,255,255))
+		espSettings.tracer.origin = flags["esp_tracer_origin"] or "Bottom"
+
+	end
+
+	local gradientKey, gradientColors = "", {}
+	local function ensureGradient(low, high)
+		local key = string.format("%.4f,%.4f,%.4f|%.4f,%.4f,%.4f",
+			low.R, low.G, low.B, high.R, high.G, high.B)
+		if key == gradientKey then return end
+		gradientKey = key
+		for index = 1, HEALTH_SLICES do
+			gradientColors[index] = lerpGradColor((index - 0.5) / HEALTH_SLICES, low, high)
+		end
+	end
+
+	local visCache = {}
+	local losParams = RaycastParams.new()
+	local losFilter = { nil, nil }
+	pcall(function() losParams.FilterType = Enum.RaycastFilterType.Exclude end)
+	local function checkLOS(cam, model)
+		local hrp = model:FindFirstChild("HumanoidRootPart")
+		if not hrp then return false end
+		losFilter[1], losFilter[2] = lp.Character, model
+		pcall(function() losParams.FilterDescendantsInstances = losFilter end)
+		local direction = hrp.Position - cam.CFrame.Position
+		local hit
+		pcall(function() hit = Workspace:Raycast(cam.CFrame.Position, direction, losParams) end)
+		return hit == nil
+	end
+	local function getVisible(player, cam, model)
+		local cached = visCache[player]
+		if cached ~= nil then return cached end
+		local visible = checkLOS(cam, model)
+		visCache[player] = visible
+		return visible
+	end
+
+	local function allocate(player)
+		if pool[player] then return end
+		local entry = {
+			boxOutline = newDrawing("Square", { Thickness = 3, Visible = false, Color = COLOR_BLACK }),
+			box = newDrawing("Square", { Thickness = 1, Visible = false }),
+			filledBox = newDrawing("Square", { Filled = true, Visible = false }),
+			corners = {}, healthGradient = {},
+			healthOutline = newDrawing("Line", { Thickness = 4, Visible = false, Color = COLOR_BLACK }),
+			name = newDrawing("Text", { Size = 13, Font = 2, Center = true, Outline = true, Visible = false }),
+			healthText = newDrawing("Text", { Size = 13, Font = 2, Center = true, Outline = true, Visible = false }),
+			infoText = newDrawing("Text", { Size = 13, Font = 2, Center = true, Outline = true, Visible = false }),
+			viewAngle = newDrawing("Line", { Thickness = 1, Visible = false }),
+			tracer = newDrawing("Line", { Thickness = 1, Visible = false }),
+			cham = newCham({ Enabled = false }),
+			_hidden = false, _fontSize = 13, _font = 2, _toolName = nil, _toolAt = 0,
+		}
+		for index = 1, 8 do
+			entry.corners[index] = newDrawing("Line", { Thickness = 2, Visible = false })
+		end
+		for index = 1, HEALTH_SLICES do
+			entry.healthGradient[index] = newDrawing("Line", { Thickness = 2, Visible = false })
+		end
+		pool[player] = entry
+	end
+	local function hideCorners(entry)
+		for index = 1, 8 do entry.corners[index].Visible = false end
+	end
+	local function hideGradient(entry)
+		for index = 1, HEALTH_SLICES do entry.healthGradient[index].Visible = false end
+	end
+	local function hideEntry(entry)
+		if entry._hidden then return end
+		entry._hidden = true
+		entry.boxOutline.Visible = false
+		entry.box.Visible = false
+		entry.filledBox.Visible = false
+		entry.healthOutline.Visible = false
+		entry.name.Visible = false
+		entry.healthText.Visible = false
+		entry.infoText.Visible = false
+		entry.viewAngle.Visible = false
+		entry.tracer.Visible = false
+		entry.cham.Enabled = false
+		hideCorners(entry)
+		hideGradient(entry)
+	end
+	local function release(player)
+		local entry = pool[player]
+		if not entry then return end
+		pool[player] = nil
+		if entry.charConn then pcall(function() entry.charConn:Disconnect() end) end
+		local singles = { "boxOutline", "box", "filledBox", "healthOutline", "name", "healthText", "infoText", "viewAngle", "tracer" }
+		for _, key in ipairs(singles) do pcall(function() entry[key]:Remove() end) end
+		for _, drawing in ipairs(entry.corners) do pcall(function() drawing:Remove() end) end
+		for _, drawing in ipairs(entry.healthGradient) do pcall(function() drawing:Remove() end) end
+		pcall(function() entry.cham:Destroy() end)
+		for index = #playerList, 1, -1 do
+			if playerList[index] == player then table.remove(playerList, index); break end
+		end
+	end
+	local function drawCorners(entry, boxX, boxY, boxW, boxH, color)
+		local length = boxW * 0.28
+		for index = 1, 8 do
+			local definition = CORNER_DEFS[index]
+			local px, py = boxX + definition[1] * boxW, boxY + definition[2] * boxH
+			local line = entry.corners[index]
+			line.From = v2new(px, py)
+			line.To = v2new(px + definition[3] * length, py + definition[4] * length)
+			line.Color = color
+			line.Visible = true
+		end
+	end
+	local function watchPlayer(player)
+		if player == lp or pool[player] then return end
+		allocate(player)
+		playerList[#playerList + 1] = player
+		local entry = pool[player]
+		entry.charConn = player.CharacterAdded:Connect(function() allocate(player) end)
+	end
+
+	syncEspSettings()
+	ensureGradient(espSettings.healthBar.colorLow, espSettings.healthBar.colorHigh)
+	for _, player in ipairs(Players:GetPlayers()) do watchPlayer(player) end
+	bindConn(Players.PlayerAdded:Connect(watchPlayer))
+	bindConn(Players.PlayerRemoving:Connect(release))
+	bindConn(lp.CharacterRemoving:Connect(function()
+		for player in pairs(pool) do hideEntry(pool[player]) end
+	end))
+	bindConn(RunService.Heartbeat:Connect(function() frame = frame + 1 end))
+
+	bindConn(RunService.RenderStepped:Connect(function()
+		local cam = Workspace.CurrentCamera
+		if not cam then return end
+		camera = cam
+		local isRenderFrame = frame % 2 == 0
+		local vpX, vpY, heightScale = cam.ViewportSize.X, cam.ViewportSize.Y, 1
+		if isRenderFrame then
+			syncEspSettings()
+			table.clear(visCache)
+			ensureGradient(espSettings.healthBar.colorLow, espSettings.healthBar.colorHigh)
+			heightScale = vpY / (2 * math.tan(math.rad(cam.FieldOfView / 2)))
+		end
+		local character = lp.Character
+		local localRoot = character and character:FindFirstChild("HumanoidRootPart")
+		for index = 1, #playerList do
+			local player = playerList[index]
+			if player ~= lp then
+				local entry = pool[player]
+				if not entry then allocate(player); entry = pool[player] end
+				if entry then
+					local model = player.Character
+					local humanoid = model and model:FindFirstChildOfClass("Humanoid")
+					local hrp = model and model:FindFirstChild("HumanoidRootPart")
+					local renderable, distance = false, 0
+					if espSettings.enabled and model and humanoid and humanoid.Health > 0 and hrp and localRoot
+						and espSettings.isEnemy(player) then
+						distance = (hrp.Position - localRoot.Position).Magnitude
+						renderable = espSettings.maxDist <= 0 or distance <= espSettings.maxDist
+					end
+					if not renderable then
+						hideEntry(entry)
+					elseif isRenderFrame then
+						local center, onScreen = cam:WorldToViewportPoint(hrp.Position)
+						if not onScreen or center.Z < 0 then
+							hideEntry(entry)
+						else
+							entry._hidden = false
+							local fontSize = espSettings.fontSize
+							if entry._fontSize ~= fontSize or entry._font ~= espSettings.font then
+								entry._fontSize, entry._font = fontSize, espSettings.font
+								entry.name.Size, entry.healthText.Size, entry.infoText.Size = fontSize, fontSize, fontSize
+								entry.name.Font, entry.healthText.Font, entry.infoText.Font = espSettings.font, espSettings.font, espSettings.font
+							end
+							local boxH = math.max(6 * heightScale / center.Z * 0.92, 10)
+							local boxW = floor(boxH * 0.72)
+							local boxX, boxY = floor(center.X - boxW / 2), floor(center.Y - boxH / 2)
+							local botY = boxY + boxH + 1
+							local ratio = clamp(humanoid.Health / math.max(humanoid.MaxHealth, 1), 0, 1)
+							local gradColor = lerpGradColor(ratio,
+								espSettings.healthBar.colorLow, espSettings.healthBar.colorHigh)
+
+							local sBox, sFilled = espSettings.box, espSettings.filledBox
+							local sHealth, sHealthText = espSettings.healthBar, espSettings.healthText
+							local sName, sDist, sWeapon = espSettings.name, espSettings.distance, espSettings.weapon
+							local sView, sChams = espSettings.viewAngle, espSettings.chams
+							local sTracer = espSettings.tracer
+
+							if sChams.enabled then
+								entry.cham.Adornee = model
+								if sChams.visCheck then
+									local visible = getVisible(player, cam, model)
+									entry.cham.FillColor = visible and sChams.visColor or sChams.invisColor
+									entry.cham.OutlineColor = visible and sChams.visColor or sChams.invisColor
+								else
+									entry.cham.FillColor = sChams.fillColor
+									entry.cham.OutlineColor = sChams.outlineColor
+								end
+								entry.cham.FillTransparency = sChams.fillTransparency
+								entry.cham.OutlineTransparency = sChams.outlineTransparency
+								entry.cham.Enabled = true
+							else
+								entry.cham.Enabled = false
+							end
+
+							if sFilled.enabled then
+								entry.filledBox.Size = v2new(boxW - 2, boxH - 2)
+								entry.filledBox.Position = v2new(boxX + 1, boxY + 1)
+								entry.filledBox.Color = sFilled.color
+								entry.filledBox.Transparency = sFilled.transparency
+								entry.filledBox.Visible = true
+							else
+								entry.filledBox.Visible = false
+							end
+
+							if sBox.enabled then
+								if sBox.type == "Corner" then
+									entry.boxOutline.Visible = false
+									entry.box.Visible = false
+									drawCorners(entry, boxX, boxY, boxW, boxH, sBox.color)
+								else
+									hideCorners(entry)
+									entry.boxOutline.Size = v2new(boxW, boxH)
+									entry.boxOutline.Position = v2new(boxX, boxY)
+									entry.boxOutline.Visible = sBox.outline
+									entry.box.Size = v2new(boxW, boxH)
+									entry.box.Position = v2new(boxX, boxY)
+									entry.box.Color = sBox.color
+									entry.box.Thickness = sBox.thickness
+									entry.box.Visible = true
+								end
+							else
+								entry.boxOutline.Visible = false
+								entry.box.Visible = false
+								hideCorners(entry)
+							end
+
+							if sHealth.enabled then
+								local gradient = entry.healthGradient
+								if sHealth.position == "Top" then
+									local barY, barLeft = boxY - 6, boxX
+									local fullW, fillW = boxW, ratio * boxW
+									entry.healthOutline.Thickness = 6
+									entry.healthOutline.From = v2new(barLeft - 1, barY)
+									entry.healthOutline.To = v2new(barLeft + fullW + 1, barY)
+									entry.healthOutline.Visible = sHealth.outline
+									local sliceW = fillW / HEALTH_SLICES
+									for slice = 1, HEALTH_SLICES do
+										local segment = gradient[slice]
+										if fillW < 1 then
+											segment.Visible = false
+										else
+											segment.From = v2new(barLeft + (slice - 1) * sliceW, barY)
+											segment.To = v2new(barLeft + slice * sliceW, barY)
+											segment.Color = gradientColors[slice] or gradColor
+											segment.Visible = true
+										end
+									end
+								else
+									local barX, barBot, barTop = boxX - 6, boxY + boxH, boxY
+									local fullH, fillH = barBot - barTop, ratio * (barBot - barTop)
+									entry.healthOutline.Thickness = 4
+									entry.healthOutline.From = v2new(barX, barBot + 1)
+									entry.healthOutline.To = v2new(barX, barTop - 1)
+									entry.healthOutline.Visible = sHealth.outline
+									local sliceH = fillH / HEALTH_SLICES
+									for slice = 1, HEALTH_SLICES do
+										local segment = gradient[slice]
+										if fillH < 1 then
+											segment.Visible = false
+										else
+											segment.From = v2new(barX, barBot - (slice - 1) * sliceH)
+											segment.To = v2new(barX, barBot - slice * sliceH)
+											segment.Color = gradientColors[slice] or gradColor
+											segment.Visible = true
+										end
+									end
+								end
+							else
+								entry.healthOutline.Visible = false
+								hideGradient(entry)
+							end
+
+							if sHealthText.enabled then
+								entry.healthText.Text = floor(ratio * 100 + 0.5) .. "%"
+								entry.healthText.Position = (sHealth.enabled and sHealth.position == "Top")
+									and v2new(boxX - 24, boxY - 7) or v2new(boxX - 24, boxY)
+								entry.healthText.Color = sHealthText.matchGradient and gradColor or sHealthText.color
+								entry.healthText.Visible = true
+							else
+								entry.healthText.Visible = false
+							end
+
+							if sName.enabled then
+								local nameY = (sHealth.enabled and sHealth.position == "Top")
+									and (boxY - 6 - fontSize - 2) or (boxY - fontSize - 3)
+								entry.name.Text = sName.displayName and (player.DisplayName or player.Name) or player.Name
+								entry.name.Position = v2new(center.X, nameY)
+								entry.name.Color = sName.color
+								entry.name.Visible = true
+							else
+								entry.name.Visible = false
+							end
+
+							local infoString
+							local distanceValue = sDist.enabled and floor(distance) or nil
+							local toolName
+							if sWeapon.enabled then
+								if entry._toolName == nil or frame - entry._toolAt >= 15 then
+									entry._toolName = heldLabelOf(model)
+									entry._toolAt = frame
+								end
+								toolName = entry._toolName
+							end
+							if distanceValue and toolName then
+								infoString = "[" .. distanceValue .. "m]\n" .. toolName
+							elseif distanceValue then
+								infoString = "[" .. distanceValue .. "m]"
+							elseif toolName then
+								infoString = toolName
+							end
+							if infoString then
+								entry.infoText.Text = infoString
+								entry.infoText.Position = v2new(center.X, botY)
+								entry.infoText.Color = (not sDist.enabled and sWeapon.enabled) and sWeapon.color or sDist.color
+								entry.infoText.Visible = true
+							else
+								entry.infoText.Visible = false
+							end
+
+							local head = model:FindFirstChild("Head")
+							if sView.enabled and head then
+								local headCF = head.CFrame
+								local lookWorld = (headCF + headCF.LookVector * sView.length).Position
+								local lookPoint = cam:WorldToViewportPoint(lookWorld)
+								entry.viewAngle.From = v2new(center.X, center.Y)
+								entry.viewAngle.To = v2new(lookPoint.X, lookPoint.Y)
+								entry.viewAngle.Color = sView.color
+								entry.viewAngle.Visible = true
+							else
+								entry.viewAngle.Visible = false
+							end
+
+							if sTracer.enabled then
+								local fromY = sTracer.origin == "Top" and 0
+									or (sTracer.origin == "Center" and vpY / 2 or vpY)
+								entry.tracer.From = v2new(vpX / 2, fromY)
+								entry.tracer.To = v2new(center.X, center.Y)
+								entry.tracer.Color = sTracer.color
+								entry.tracer.Visible = true
+							else
+								entry.tracer.Visible = false
+							end
+						end
+					end
+				end
+			end
+		end
+	end))
+
+	local vaultEsp = {
+		settings = espSettings, Settings = espSettings,
+		isEnemy = espSettings.isEnemy, Sync = syncEspSettings,
+		Refresh = syncEspSettings, refresh_elements = syncEspSettings,
+	}
+	local espUnloaded = false
+	local function unloadEsp()
+		if espUnloaded then return end
+		espUnloaded = true
+		for _, connection in ipairs(espConns) do pcall(function() connection:Disconnect() end) end
+		table.clear(espConns)
+		for _, drawing in ipairs(teardownDrawings) do pcall(function() drawing:Remove() end) end
+		for _, instance in ipairs(teardownInstances) do pcall(function() instance:Destroy() end) end
+		for index = #playerList, 1, -1 do release(playerList[index]) end
+		table.clear(pool)
+		table.clear(playerList)
+		table.clear(teardownDrawings)
+		table.clear(teardownInstances)
+		table.clear(visCache)
+		if env.__vaultEspUnload == unloadEsp then env.__vaultEspUnload = nil end
+		if env.esp == vaultEsp then env.esp = nil end
+	end
+	vaultEsp.Unload = unloadEsp
+	espUnload = unloadEsp
+	env.esp = vaultEsp
+	env.__vaultEspUnload = unloadEsp
 end -- ESP block
 
 -- ================================================================
@@ -2675,7 +3909,11 @@ do
 			local notOurs = not (hasCheckcaller and checkcaller())
 			if notOurs then
 				local method = getnamecallmethod()
-				if method == "FireServer" and flags["sa_enabled"] and flags["sa_remote_jack"] ~= false then
+				if method == "FireServer" then
+					if flags["sf_tracers_enabled"] and OVX.sciFiTracer then
+						pcall(OVX.sciFiTracer, self, ...)
+					end
+					if flags["sa_enabled"] and flags["sa_remote_jack"] ~= false then
 					-- FirearmsRemotes.Fire: known packet shape + gun peek.
 					if self == FireRemote then
 						local a = { ... }
@@ -2747,6 +3985,7 @@ do
 							return
 						end
 					end
+				end
 				end
 			end
 			return old(self, ...)
@@ -5139,6 +6378,10 @@ local window = library:window({ name = os.date("Vault | %b %d %Y") })
 local esp
 local function update_elements()
 	if esp and esp.refresh_elements then esp.refresh_elements() end
+	local liveEsp = getgenv().esp
+	if liveEsp and liveEsp ~= esp and liveEsp.refresh_elements then
+		pcall(liveEsp.refresh_elements)
+	end
 end
 
 -- ——— COMBAT (empty template) ———
@@ -5198,6 +6441,7 @@ do
 	tb:toggle({ name = "Triggerbot NPCs", flag = "tb_npc", default = true, tooltip = "Triggerbot fires on Sleepers / Scientists / Animals (range dummies always count)" })
 	tb:toggle({ name = "Visible Only (Snapline)", flag = "tb_visible", default = true, tooltip = "Fire only when the target is inside Silent Aim's FOV and the snapline is green (clear line of sight). Turn off to ignore cover." })
 	tb:toggle({ name = "Skip While Holding", flag = "tb_skip_holding", default = true, tooltip = "Pause while your own left button is down so it never fights manual fire" })
+	tb:slider({ name = "Max Distance", min = 0, max = 5000, default = 0, interval = 10, suffix = "m", flag = "tb_max_dist", tooltip = "0 = use Silent Aim range; otherwise cap triggerbot acquisition at this distance" })
 
 	-- second column: kill aura (v2.1 port) + bullet manipulation
 	local column2 = combatTab:column()
@@ -5218,6 +6462,34 @@ do
 	bm:slider({ name = "Peek Distance", min = 2, max = 20, default = 8, interval = 1, suffix = " studs", flag = "bp_max_offset", tooltip = "How far the character sidesteps around cover to find a clear firing spot" })
 	bm:toggle({ name = "No Spread (packet)", flag = "pkt_nospread", tooltip = "Recenters Fire.direction on the held view server-side. Auto-skipped while Silent Aim is redirecting." })
 	bm:toggle({ name = "Trajectory Arc", flag = "traj_arc", tooltip = "Draws the silent-aim shot's arc with a green (hit) / red (miss) impact marker" })
+
+	local column3 = combatTab:column()
+	local bt = column3:section({ name = "Bullet Tracers" })
+	bt:toggle({ name = "Enabled", flag = "sf_tracers_enabled", tooltip = "Muzzle-to-impact Sci-Fi beams; independent of Silent Aim and player ESP tracers" })
+	bt:toggle({ name = "Use Tracer Preset", flag = "sf_tracer_use_preset", default = true, tooltip = "Use one of the eight Sci-Fi presets instead of the custom tracer color" })
+	bt:dropdown({ name = "Tracer Preset", flag = "sf_tracer_preset", items = OVX.sciFiPresetNames, default = "Cyan" })
+	bt:colorpicker({ name = "Tracer Color", flag = "sf_tracer_color", color = c3(0,255,255) })
+	bt:toggle({ name = "Impact Markers", flag = "sf_tracer_impact_enabled", default = true })
+	bt:colorpicker({ name = "Impact Color", flag = "sf_tracer_impact_color", color = c3(0,255,255) })
+	bt:slider({ name = "Impact Size", min = 0.05, max = 3, default = 0.3, interval = 0.05, flag = "sf_tracer_impact_size" })
+	bt:button({ name = "Test Tracer", callback = function()
+		if OVX.fireTestTracer then pcall(OVX.fireTestTracer) end
+	end })
+
+	local btTune = column3:section({ name = "Tracer Tuning" })
+	btTune:slider({ name = "Beam Width", min = 0.02, max = 3, default = 0.2, interval = 0.02, flag = "sf_tracer_width" })
+	btTune:slider({ name = "Beam Lifetime", min = 0.03, max = 3, default = 0.25, interval = 0.01, suffix = "s", flag = "sf_tracer_lifetime" })
+	btTune:slider({ name = "Beam Segments", min = 1, max = 20, default = 1, interval = 1, flag = "sf_tracer_segments" })
+	btTune:slider({ name = "Beam Glow", min = 0, max = 10, default = 5, interval = 1, suffix = "/10", flag = "sf_tracer_glow" })
+	btTune:slider({ name = "Light Influence", min = 0, max = 10, default = 0, interval = 1, suffix = "/10", flag = "sf_tracer_light_influence" })
+	btTune:toggle({ name = "Face Camera", flag = "sf_tracer_face_camera", default = true })
+	btTune:slider({ name = "Max Active Beams", min = 1, max = 80, default = 24, interval = 1, flag = "sf_tracer_max" })
+	btTune:slider({ name = "Tracer Range", min = 50, max = 5000, default = 1000, interval = 50, suffix = "m", flag = "sf_tracer_range" })
+	btTune:toggle({ name = "Use Muzzle Position", flag = "sf_tracer_use_muzzle", default = true })
+	btTune:toggle({ name = "Follow Silent Aim Target", flag = "sf_tracer_follow_sa", default = true })
+	btTune:toggle({ name = "Raycast Impacts", flag = "sf_tracer_raycast", default = true })
+	btTune:toggle({ name = "Include Bow Shots", flag = "sf_tracer_include_bow", default = true })
+	btTune:toggle({ name = "Double-Gun Tracers", flag = "sf_tracer_double_gun", default = true })
 end
 
 -- ——— SOUNDS (v2.1 port: hitsounds on the server's HitMarker) ———
@@ -5253,32 +6525,32 @@ do
 	local column = visualsTab:column()
 	local section = column:section({ name = "Player ESP" })
 
-	section:toggle({ name = "Enabled", flag = "Enabled", callback = update_elements })
+	section:toggle({ name = "Enabled", flag = "Enabled", default = true, callback = update_elements })
 	section:toggle({ name = "Team Check", flag = "esp_team_check" })
 	section:slider({ name = "Max Distance", min = 0, max = 2000, default = 0, interval = 10, suffix = "m", flag = "esp_max_dist" })
 
-	section:toggle({ name = "Boxes", flag = "Boxes", callback = update_elements })
+	section:toggle({ name = "Boxes", flag = "Boxes", default = true, callback = update_elements })
 		:colorpicker({ name = "Box Color", flag = "Box_Color", color = c3(255,255,255), callback = update_elements })
 	section:dropdown({ name = "Box Type", flag = "Box_Type", items = { "Full", "Corner" }, default = "Full", callback = update_elements })
 
 	section:toggle({ name = "Filled Box", flag = "esp_filled_box" })
-		:colorpicker({ name = "Fill Color", flag = "esp_filled_color", color = c3(0,0,0) })
-	section:slider({ name = "Fill Transparency", min = 1, max = 9, default = 5, interval = 1, suffix = "/10", flag = "esp_filled_transparency" })
+		:colorpicker({ name = "Fill Color", flag = "esp_filled_color", color = c3(255,255,255) })
+	section:slider({ name = "Fill Transparency", min = 1, max = 9, default = 6, interval = 1, suffix = "/10", flag = "esp_filled_transparency" })
 
-	section:toggle({ name = "Names", flag = "Names", callback = update_elements })
+	section:toggle({ name = "Names", flag = "Names", default = true, callback = update_elements })
 		:colorpicker({ name = "Name Color", flag = "Name_Color", color = c3(255,255,255), callback = update_elements })
-	section:toggle({ name = "Display Names", flag = "esp_display_names" })
+	section:toggle({ name = "Display Names", flag = "esp_display_names", default = true })
 
-	section:toggle({ name = "Healthbar", flag = "Healthbar", callback = update_elements })
+	section:toggle({ name = "Healthbar", flag = "Healthbar", default = true, callback = update_elements })
 		:colorpicker({ name = "High HP Color", flag = "Health_High", color = c3(0,255,0), callback = update_elements })
 		:colorpicker({ name = "Low HP Color", flag = "Health_Low", color = c3(255,0,0), callback = update_elements })
 	section:toggle({ name = "Health Text", flag = "esp_health_text" })
 
-	section:toggle({ name = "Distance", flag = "Distance", callback = update_elements })
+	section:toggle({ name = "Distance", flag = "Distance", default = true, callback = update_elements })
 		:colorpicker({ name = "Distance Color", flag = "Distance_Color", color = c3(200,200,200), callback = update_elements })
 
 	section:toggle({ name = "Weapon", flag = "Weapon", callback = update_elements })
-		:colorpicker({ name = "Weapon Color", flag = "Weapon_Color", color = c3(255,255,255), callback = update_elements })
+		:colorpicker({ name = "Weapon Color", flag = "Weapon_Color", color = c3(255,220,80), callback = update_elements })
 
 	-- extra ESP controls not mirrored in the preview panel
 	local column2 = visualsTab:column()
@@ -5295,8 +6567,96 @@ do
 	extra:toggle({ name = "Chams", flag = "esp_chams" })
 		:colorpicker({ name = "Cham Fill", flag = "esp_cham_fill_color", color = c3(255,255,255) })
 		:colorpicker({ name = "Cham Outline", flag = "esp_cham_outline_color", color = c3(0,0,0) })
-	extra:slider({ name = "Cham Fill Transp", min = 0, max = 10, default = 5, interval = 1, suffix = "/10", flag = "esp_cham_fill_transparency" })
-	extra:slider({ name = "Cham Out Transp", min = 0, max = 10, default = 5, interval = 1, suffix = "/10", flag = "esp_cham_outline_transparency" })
+	extra:slider({ name = "Cham Fill Transp", min = 0, max = 10, default = 4, interval = 1, suffix = "/10", flag = "esp_cham_fill_transparency" })
+	extra:slider({ name = "Cham Out Transp", min = 0, max = 10, default = 0, interval = 1, suffix = "/10", flag = "esp_cham_outline_transparency" })
+
+	local column3 = visualsTab:column()
+	local fine = column3:section({ name = "ESP Fine Tuning" })
+	fine:toggle({ name = "Box Outline", flag = "esp_box_outline", default = true })
+	fine:slider({ name = "Box Thickness", min = 1, max = 6, default = 1, interval = 1, flag = "esp_box_thickness" })
+	fine:toggle({ name = "Health Bar Outline", flag = "esp_health_outline", default = true })
+	fine:dropdown({ name = "Health Bar Position", flag = "esp_health_position", items = { "Left", "Top" }, default = "Left" })
+	fine:toggle({ name = "Health Text Gradient", flag = "esp_health_text_gradient", tooltip = "Color health percentage with the same custom low/high HSV gradient" })
+	fine:colorpicker({ name = "Health Text Color", flag = "esp_health_text_color", color = c3(255,255,255) })
+	fine:dropdown({ name = "ESP Font", flag = "esp_font", items = { "UI", "System", "Plex", "Monospace" }, default = "Plex" })
+	fine:slider({ name = "ESP Font Size", min = 8, max = 24, default = 13, interval = 1, suffix = " px", flag = "esp_font_size" })
+	fine:toggle({ name = "Chams Visibility Check", flag = "esp_cham_vis_check", tooltip = "Green/visible and red/covered colors use pooled line-of-sight raycasts" })
+	fine:colorpicker({ name = "Visible Cham Color", flag = "esp_cham_vis_color", color = c3(0,255,0) })
+	fine:colorpicker({ name = "Covered Cham Color", flag = "esp_cham_invis_color", color = c3(255,0,0) })
+
+	local column4 = visualsTab:column()
+	local hands = column4:section({ name = "Hand Chams" })
+	hands:toggle({ name = "Hand Chams", flag = "sf_hands_enabled" })
+	hands:dropdown({ name = "Hand Material", flag = "sf_hand_material", items = OVX.sciFiMaterials, default = "ForceField" })
+	hands:toggle({ name = "Use Hand Preset", flag = "sf_hand_use_preset", default = true })
+	hands:dropdown({ name = "Hand Preset", flag = "sf_hand_preset", items = OVX.sciFiPresetNames, default = "Cyan" })
+	hands:colorpicker({ name = "Hand Custom Color", flag = "sf_hand_color", color = c3(0,255,255) })
+	hands:slider({ name = "Hand Transparency", min = 0, max = 10, default = 0, interval = 1, suffix = "/10", flag = "sf_hand_transparency" })
+	hands:slider({ name = "Hand Reflectance", min = 0, max = 10, default = 2, interval = 1, suffix = "/10", flag = "sf_hand_reflectance" })
+
+	local guns = column4:section({ name = "Gun Chams" })
+	guns:toggle({ name = "Gun Chams", flag = "sf_gun_enabled" })
+	guns:dropdown({ name = "Gun Material", flag = "sf_gun_material", items = OVX.sciFiMaterials, default = "ForceField" })
+	guns:toggle({ name = "Use Gun Preset", flag = "sf_gun_use_preset", default = true })
+	guns:dropdown({ name = "Gun Preset", flag = "sf_gun_preset", items = OVX.sciFiPresetNames, default = "Cyan" })
+	guns:colorpicker({ name = "Gun Custom Color", flag = "sf_gun_color", color = c3(0,255,255) })
+	guns:slider({ name = "Gun Transparency", min = 0, max = 10, default = 0, interval = 1, suffix = "/10", flag = "sf_gun_transparency" })
+	guns:slider({ name = "Gun Reflectance", min = 0, max = 10, default = 2, interval = 1, suffix = "/10", flag = "sf_gun_reflectance" })
+
+	local column5 = visualsTab:column()
+	local shared = column5:section({ name = "Viewmodel Shared" })
+	shared:toggle({ name = "Protect Muzzle / Flash", flag = "sf_protect_muzzle", default = true, tooltip = "Never cham muzzle, flash, smoke, beam or particle parts" })
+	shared:toggle({ name = "Double-Gun Fix", flag = "sf_double_gun_fix", default = true })
+	shared:slider({ name = "Viewmodel Refresh Rate", min = 1, max = 20, default = 5, interval = 1, suffix = " Hz", flag = "sf_vmodel_refresh_hz" })
+
+	local skin = column5:section({ name = "Skin Changer" })
+	skin:toggle({ name = "Skin Changer", flag = "skin_enabled", default = true })
+	skin:dropdown({ name = "Apply Scope", flag = "skin_apply_mode", items = { "Selected Gun", "All Guns" }, default = "Selected Gun" })
+	local skinWeaponDropdown = skin:dropdown({
+		name = "Weapon", flag = "skin_weapon", items = OVX.skinGetWeapons(), default = "Assault Rifle",
+		callback = function()
+			local fn = library.config_flags["skin_weapon_custom"]
+			if fn then pcall(fn, "") else flags["skin_weapon_custom"] = "" end
+		end,
+	})
+	local skinSkinDropdown = skin:dropdown({
+		name = "Skin", flag = "skin_skin", items = OVX.skinGetSkins(), default = "Tempered",
+		callback = function()
+			local fn = library.config_flags["skin_skin_custom"]
+			if fn then pcall(fn, "") else flags["skin_skin_custom"] = "" end
+		end,
+	})
+	skin:textbox({ name = "Custom Weapon Name", flag = "skin_weapon_custom", default = "", tooltip = "Overrides the weapon dropdown for SetSkin / per-gun apply" })
+	skin:textbox({ name = "Custom Skin Name", flag = "skin_skin_custom", default = "", tooltip = "Overrides the skin dropdown; discovered asset names also appear here" })
+	skin:button({ name = "Apply Skin", callback = function() if OVX.skinApplyMode then pcall(OVX.skinApplyMode) end end })
+	skin:button({ name = "Apply All Guns", callback = function() if OVX.skinApplyAll then pcall(OVX.skinApplyAll) end end })
+	skin:button({ name = "Reset Selected Gun", callback = function() if OVX.skinResetWeapon then pcall(OVX.skinResetWeapon) end end })
+	skin:button({ name = "Reset All Guns", callback = function() if OVX.skinResetAll then pcall(OVX.skinResetAll) end end })
+	skin:button({ name = "Print Skin Map", callback = function() if OVX.skinPrintConfig then pcall(OVX.skinPrintConfig) end end })
+	skin:toggle({ name = "Auto Reapply", flag = "skin_auto_reapply", default = true })
+	skin:slider({ name = "Reapply Delay", min = 0, max = 1, default = 0.05, interval = 0.05, suffix = "s", flag = "skin_delay" })
+
+	local column6 = visualsTab:column()
+	local skinDiag = column6:section({ name = "Skin Diagnostics" })
+	skinDiag:toggle({ name = "Discover Asset Names", flag = "skin_discover_assets", default = true })
+	skinDiag:slider({ name = "Asset Scan Limit", min = 100, max = 5000, default = 1200, interval = 100, flag = "skin_asset_limit" })
+	skinDiag:slider({ name = "Asset Search Depth", min = 2, max = 8, default = 5, interval = 1, flag = "skin_asset_depth" })
+	skinDiag:dropdown({ name = "Fallback Material", flag = "skin_fallback_material", items = OVX.sciFiMaterials, default = "ForceField" })
+	skinDiag:colorpicker({ name = "Fallback Color", flag = "skin_fallback_color", color = c3(255,180,80) })
+	skinDiag:slider({ name = "Fallback Transparency", min = 0, max = 10, default = 0, interval = 1, suffix = "/10", flag = "skin_fallback_transparency" })
+	skinDiag:slider({ name = "Fallback Reflectance", min = 0, max = 10, default = 2, interval = 1, suffix = "/10", flag = "skin_fallback_reflectance" })
+	skinDiag:toggle({ name = "Debug Prints", flag = "skin_debug", tooltip = "Print every SetSkin / SetAllSkins / ResetSkins call to the executor console" })
+	skinDiag:button({ name = "Refresh Skin Lists", callback = function() if OVX.skinRefreshUI then pcall(OVX.skinRefreshUI) end end })
+	OVX.skinRefreshUI = function()
+		pcall(function()
+			skinWeaponDropdown:Refresh(OVX.skinGetWeapons())
+			skinWeaponDropdown:Update()
+		end)
+		pcall(function()
+			skinSkinDropdown:Refresh(OVX.skinGetSkins())
+			skinSkinDropdown:Update()
+		end)
+	end
 
 end
 
@@ -5464,6 +6824,12 @@ do
 	dsSec:toggle({ name = "Freeze Anim", flag = "ds_animfreeze" })
 	dsSec:toggle({ name = "Velocity Poison", flag = "ds_velocity", tooltip = "Rubberband risk — OFF by default" })
 	dsSec:dropdown({ name = "Vel Type", flag = "ds_veltype", items = { "low", "high", "high y", "limit" }, default = "low" })
+	dsSec:slider({ name = "Offset X", min = -10, max = 10, default = 0, interval = 0.1, flag = "ds_ox" })
+	dsSec:slider({ name = "Offset Y", min = -10, max = 10, default = -2.4, interval = 0.1, flag = "ds_oy" })
+	dsSec:slider({ name = "Offset Z", min = -10, max = 10, default = 0, interval = 0.1, flag = "ds_oz" })
+	dsSec:slider({ name = "Rotation X", min = -180, max = 180, default = 90, interval = 1, suffix = "°", flag = "ds_rx" })
+	dsSec:slider({ name = "Rotation Y", min = -180, max = 180, default = 0, interval = 1, suffix = "°", flag = "ds_ry" })
+	dsSec:slider({ name = "Rotation Z", min = -180, max = 180, default = 0, interval = 1, suffix = "°", flag = "ds_rz" })
 
 	local ovSec = dcol:section({ name = "Overlays" })
 	ovSec:toggle({ name = "Crosshair Info", flag = "hud_targetinfo", default = true, enabled = true })
@@ -5751,6 +7117,7 @@ local function cleanup()
 	for _, conn in ipairs(_connections) do pcall(function() conn:Disconnect() end) end
 	table.clear(_connections)
 	if espUnload then pcall(espUnload) end
+	if OVX.finalizeViewmodelCleanup then pcall(OVX.finalizeViewmodelCleanup) end
 end
 
 -- window:unload() disconnects noname.hack and invokes this callback.
@@ -5785,7 +7152,7 @@ getgenv().Vault = {
 
 pcall(function() window.set_menu_visibility(true) end)
 
-print("[OVX] loaded — silent aim + triggerbot + gun peek/desync + snapline/crosshair + ESP/world + speed/phase/spider/freecam + kill aura + autofarm + hitsounds + trajectory arc + desync + inventory viewer + crosshair info + staff panel")
+print("[OVX] loaded — silent aim + triggerbot + bullet tracers + Sci-Fi hand/gun chams + skin changer + v5 gradient ESP + ESP/world + speed/phase/spider/freecam + kill aura + autofarm + hitsounds + trajectory arc + desync + inventory viewer + crosshair info + staff panel")
 
 -- external state bridge (for console/state analysis + remote toggling)
 getgenv().__ovx = { flags = flags, library = library, setf = library.config_flags, window = window, state = OVX }
