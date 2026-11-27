@@ -542,7 +542,6 @@ setDefaultFlag("skin_fallback_reflectance", 2)
 setDefaultFlag("skin_debug", false)
 setDefaultFlag("tb_max_dist", 0)
 setDefaultFlag("rb_enabled", false)
-setDefaultFlag("rb_enabled_quick", false)
 setDefaultFlag("rb_max_dist", 0)
 setDefaultFlag("esp_preview_2d", true)
 setDefaultFlag("esp_self_preview_3d", true)
@@ -720,7 +719,13 @@ local function dropdownInfo(info)
 	local out = copyTable(info)
 	out.options = info.items or info.options or { "first", "second", "third" }
 	out.multi = info.multi == true
-	out.scrollable = info.scrolling or info.scrollable or false
+	-- Native dropdown honors: scrollable (bool), vis (max visible rows, defaults to
+	-- #options), and wheel-scrolls between scrolling[1]..[2]. Mirror both flags so
+	-- long lists (materials, weapons, saved configs) actually scroll instead of
+	-- painting a huge popup that overflows the window.
+	out.scrollable = info.scrollable == true or info.scrolling == true or false
+	out.vis = tonumber(info.vis or info.scroll) or (out.scrollable and 10 or #out.options)
+	if out.vis < 1 then out.vis = 1 end
 	out.flag = info.flag or ""
 	out.pointer = nextPointer(info.flag or "dropdown")
 	return out
@@ -1145,46 +1150,56 @@ local function attachTab(tab)
 			end
 		end
 	end
-	local function applySectionClip(section, item, top, maxH, maxW, visibleMenu)
-		local instances = section.instances or {}
-		local base = instances[1]
-		if not base then return end
+		local function applySectionClip(section, item, top, maxH, maxW, visibleMenu)
+			local instances = section.instances or {}
+			local base = instances[1]
+			if not base then return end
 
-		-- Native section.instances only lists control roots; their children and
-		-- open popups are Drawing children. Build both sets so a clipped section
-		-- cannot leave headers, labels or controls painted outside the window.
-		local controlSet, controlSeen = {}, {}
-		for idx = 8, #instances do
-			collectTree(instances[idx], controlSet, controlSeen, nil)
-		end
-		local frameSet, frameSeen = {}, {}
-		for idx = 1, math.min(7, #instances) do
-			collectTree(instances[idx], frameSet, frameSeen, controlSet)
-		end
+			-- Native section.instances only lists control roots; their children and
+			-- open popups are Drawing children. Build both sets so a clipped section
+			-- cannot leave headers, labels or controls painted outside the window.
+			local controlSet, controlSeen = {}, {}
+			for idx = 8, #instances do
+				collectTree(instances[idx], controlSet, controlSeen, nil)
+			end
+			local frameSet, frameSeen = {}, {}
+			for idx = 1, math.min(7, #instances) do
+				collectTree(instances[idx], frameSet, frameSeen, controlSet)
+			end
 
-		local frameClip = top < 0 or top + item.h > maxH
-		local seen = {}
-		local function visit(draw, absX, absY)
-			if not draw or seen[draw] then return end
-			seen[draw] = true
-			local w, h = drawingSize(draw)
-			local inClip = absY > -4 and absY < maxH + 4
-				and absY + h > -4 and absY + h <= maxH + 4
-				and absX > -4 and absX < maxW + 4
-				and absX + w > -4 and absX + w <= maxW + 4
-			local show = visibleMenu and inClip
-				and not (frameClip and frameSet[draw])
-			draw.Visible = show and true or false
-			local children = childrenOf(draw)
-			if children then
-				for _, child in ipairs(children) do
-					local off = drawingOffset(child)
-					visit(child, absX + off.X, absY + off.Y)
+			local function isPopupDraw(draw)
+				-- Popups (dropdown lists, color pickers, keybind mode menus) are
+				-- created with ZIndex >= 100; regular controls keep the low
+				-- defaults. Popup drawings must paint past the tab frame or the
+				-- picker/wheel and long option lists become unusable.
+				local ok, z = pcall(function() return rawget(draw, "ZIndex") end)
+				local znum = tonumber(z)
+				return znum ~= nil and znum >= 100
+			end
+
+			local frameClip = top < 0 or top + item.h > maxH
+			local seen = {}
+			local function visit(draw, absX, absY, insidePopup)
+				if not draw or seen[draw] then return end
+				seen[draw] = true
+				local w, h = drawingSize(draw)
+				local popup = insidePopup or isPopupDraw(draw)
+				local inClip = absY > -4 and absY < maxH + 4
+					and absY + h > -4 and absY + h <= maxH + 4
+					and absX > -4 and absX < maxW + 4
+					and absX + w > -4 and absX + w <= maxW + 4
+				local show = visibleMenu and (popup or (inClip and not (frameClip and frameSet[draw])))
+				draw.Visible = show and true or false
+				local children = childrenOf(draw)
+				if children then
+					for _, child in ipairs(children) do
+						local off = drawingOffset(child)
+						visit(child, absX + off.X, absY + off.Y, popup)
+					end
 				end
 			end
+			visit(base, item.x, top, false)
 		end
-		visit(base, item.x, top)
-	end
 
 	function tab:_compatLayout()
 		local frame = currentFrame()
@@ -1986,99 +2001,44 @@ local WORLD_SEC_COLOR = {
 local OVX = { saTarget = nil, saRedirectAt = nil }
 -- ================================================================
 -- // RAGEBOT STATE
--- //   The master toggle is reversible. While it is on, every Silent Aim
--- //   toggle is forced ON and cannot be switched off from a control,
--- //   keybind, config load or console setter.
+-- //   Standalone master switch — head-only, INF acquisition through the
+-- //   embedded PSilent path. Never force-locks or restores your toggles.
 -- ================================================================
 do
-	local ragebotRequired = {
-		sa_enabled = true,
-		sa_team_check = true,
-		sa_target_npc = true,
-		sa_show_fov = true,
-		sa_snapline = true,
-		sa_snapline_npc = true,
-		sa_cross = true,
-		sa_force_head = true,
-		sa_instant_hit = true,
-		sa_remote_jack = true,
-		sa_bone = "Head",
-		wm_norecoil = true,
-		wm_nospread = true,
-		wm_nosway = true,
-		wm_instantads = true,
-		wm_autofire = true,
-		wm_rapidfire = true,
-		wm_rpm = 1200,
-		wm_fastcycle = true,
-		wm_range = true,
-		tb_enabled = true,
-		tb_npc = true,
-		tb_visible = false,
-		tb_skip_holding = false,
-		tb_max_dist = 0,
-	}
-	OVX.ragebotLocked = ragebotRequired
-	OVX.ragebotRestore = nil
-
-	enforceRagebotFlag = function(flag, value)
-		if flags["rb_enabled"] ~= true then return value end
-		local required = ragebotRequired[flag]
-		if required == nil then return value end
-		local candidate = value
-		if type(required) == "boolean" then
-			candidate = value == true or value == 1 or value == "true" or value == "on"
-		end
-		if candidate ~= required then return required end
-		return candidate
-	end
+	-- Ragebot is a STANDALONE switch. It aims through the same embedded
+	-- PSilent path as Silent Aim but never force-locks, saves or restores
+	-- any of the user's Silent Aim / Gun Mods / Triggerbot toggles.
+	-- Head-only, INF acquisition (see OVX.saFov / OVX.ragebotTargetScore).
+	-- It follows the main Ragebot toggle in the Combat tab only.
+	--
+	-- InputBegan can double-fire for one physical click on slower frames;
+	-- an opposite-value apply within 0.35s of the previous one is dropped
+	-- and the toggle is snapped back to the flag value so it can never
+	-- bounce on/off in the same click.
+	local ragebotApplying, ragebotLastAt, ragebotLastValue = false, 0, nil
 
 	function OVX.ragebotSync()
-		for flag, value in pairs(ragebotRequired) do
-			setCompatFlag(flag, value, true)
-		end
-		if OVX.ragebotQuickSync then pcall(OVX.ragebotQuickSync, true) end
+		if OVX.ragebotSetVisual then pcall(OVX.ragebotSetVisual, flags["rb_enabled"] == true) end
 	end
 
-	local ragebotApplying = false
 	function OVX.ragebotApply(on)
 		on = on == true
-		-- Re-entrancy guard: applying the state force-sets ~20 other toggles, each
-		-- of which fires Update. If anything in that chain calls back into here,
-		-- the inner call is dropped so the master toggle can't flap on/off in the
-		-- same click.
-		if ragebotApplying then return flags["rb_enabled"] == true end
-		ragebotApplying = true
+		local now = os.clock()
+		if ragebotApplying then if OVX.ragebotSync then pcall(OVX.ragebotSync) end return flags["rb_enabled"] == true end
+		if ragebotLastAt > 0 and now - ragebotLastAt < 0.35 and on ~= ragebotLastValue then
+			-- same-click bounce from a double-fired input event; keep the flag and snap the visuals back
+			if OVX.ragebotSync then pcall(OVX.ragebotSync) end
+			return flags["rb_enabled"] == true
+		end
+		ragebotApplying, ragebotLastAt, ragebotLastValue = true, now, on
 		local ok, err = pcall(function()
-			if on and not OVX.ragebotRestore then
-				OVX.ragebotRestore = {}
-				for flag in pairs(ragebotRequired) do
-					OVX.ragebotRestore[flag] = flags[flag]
-				end
-			end
 			flags["rb_enabled"] = on
-			-- Keep BOTH Combat-tab toggles visually in sync with the flag from every
-			-- entry point (main toggle, quick toggle, config load, console setter),
-			-- so one can never show OFF while Ragebot is actually on.
-			if OVX.ragebotQuickSync then pcall(OVX.ragebotQuickSync, on) end
-			if on then
-				OVX.ragebotSync()
-			elseif OVX.ragebotRestore then
-				local saved = OVX.ragebotRestore
-				OVX.ragebotRestore = nil
-				for flag, value in pairs(saved) do
-					setCompatFlag(flag, value, true)
-				end
-			end
+			if OVX.ragebotSync then pcall(OVX.ragebotSync) end
 		end)
 		ragebotApplying = false
 		if not ok then OVX.ragebotErr = tostring(err) end
 		return on
 	end
-
-	registerFlagSetter("rb_enabled", function(value)
-		return OVX.ragebotApply(value == true)
-	end)
 
 	function OVX.saFov()
 		if flags["rb_enabled"] == true then return math.huge end
@@ -2104,16 +2064,8 @@ do
 		end
 		return tonumber(flags["sa_max_dist"]) or 0
 	end
-
-	local lastSync = 0
-	bind(RunService.Heartbeat:Connect(function()
-		if flags["rb_enabled"] ~= true then return end
-		local now = os.clock()
-		if now - lastSync < 0.25 then return end
-		lastSync = now
-		pcall(OVX.ragebotSync)
-	end))
 end
+
 do
 	function OVX.notify(text)
 		print("[OVX] " .. tostring(text))
@@ -4083,13 +4035,13 @@ do
 	local function getTarget()
 		SA.refreshNpcs(false)
 		local camera = Workspace.CurrentCamera
-		if not camera or not flags["sa_enabled"] then return nil end
+		if not camera or not (flags["sa_enabled"] or flags["rb_enabled"]) then return nil end
 		local m = UIS:GetMouseLocation()
 		local crosshair = v2new(m.X, m.Y)
 		local fov      = OVX.saFov()
 		local maxd     = OVX.saMaxDist()
 		local teamChk  = flags["sa_team_check"]
-		local bone     = flags["sa_force_head"] ~= false and "Head" or (flags["sa_bone"] or "Head")
+		local bone     = flags["rb_enabled"] == true and "Head" or (flags["sa_force_head"] ~= false and "Head" or (flags["sa_bone"] or "Head"))
 		local lchar = lp.Character
 		local lhrp  = lchar and lchar:FindFirstChild("HumanoidRootPart")
 		local best, bestD = nil, fov
@@ -4145,7 +4097,7 @@ do
 	local _saColor = c3(60, 255, 60)
 	local lastScanAt = 0
 	bind(RunService.Heartbeat:Connect(function()
-		if not (saActive and flags["sa_enabled"]) then
+		if not (saActive and (flags["sa_enabled"] or flags["rb_enabled"])) then
 			_saTarget = nil
 			OVX.saTarget = nil
 			return
@@ -4166,7 +4118,7 @@ do
 		end
 	end))
 	bind(RunService.RenderStepped:Connect(function()
-		local on = saActive and flags["sa_enabled"]
+		local on = saActive and (flags["sa_enabled"] or flags["rb_enabled"])
 		if not on then
 			fovCircle.Visible = false
 			snapLine.Visible = false; crossV.Visible = false; crossH.Visible = false
@@ -4267,7 +4219,7 @@ do
 			if notOurs then
 				local method = getnamecallmethod()
 				if method == "FireServer" then
-					if flags["sa_enabled"] and flags["sa_remote_jack"] ~= false then
+					if (flags["sa_enabled"] or flags["rb_enabled"]) and flags["sa_remote_jack"] ~= false then
 					-- FirearmsRemotes.Fire: known packet shape + gun peek.
 					if self == FireRemote then
 						local a = { ... }
@@ -4395,7 +4347,7 @@ do
 		elseif maxd <= 0 then
 			maxd = tonumber(flags["sa_max_dist"]) or 0
 		end
-		local bone = flags["sa_force_head"] ~= false and "Head" or (flags["sa_bone"] or "Head")
+		local bone = flags["rb_enabled"] == true and "Head" or (flags["sa_force_head"] ~= false and "Head" or (flags["sa_bone"] or "Head"))
 		local teamChk = flags["sa_team_check"]
 		local lhrp = char and char:FindFirstChild("HumanoidRootPart")
 		local best, bestD = nil, fov
@@ -4557,6 +4509,9 @@ do
 
 	refind()
 	local lastFind = os.clock()
+	local lastTool = nil
+	local mEquipAt = 0
+	local charTickAt = 0
 
 	bind(RunService.Heartbeat:Connect(function()
 		if not wmActive then return end
@@ -4564,6 +4519,21 @@ do
 		local wmNow = os.clock()
 		if wmNow - wmTickAt < 0.1 then return end
 		wmTickAt = wmNow
+		-- Gun equip: a newly equipped weapon's def/state tables are NOT in the
+		-- load-time cache, so the mods would only kick in on a later timer or not
+		-- at all. Detect the tool change at 10 Hz and rescan immediately so a
+		-- gun picked up/swapped gets its mods applied on the same beat.
+		if wmNow - charTickAt >= 0.25 then
+			charTickAt = wmNow
+			local char = lp.Character
+			local t = char and char:FindFirstChildOfClass("Tool")
+			if t ~= lastTool then
+				lastTool = t
+				mEquipAt = wmNow
+				lastFind = wmNow
+				pcall(refind)
+			end
+		end
 		local noRec   = flags["wm_norecoil"]
 		local noSpr   = flags["wm_nospread"]
 		local noSway  = flags["wm_nosway"]
@@ -4574,14 +4544,17 @@ do
 		local fastCycle = flags["wm_fastcycle"]
 		local active = noRec or noSpr or noSway or iAds or autoF or rapid or fastCycle
 
-		if active then
-			-- re-scan for new def/state tables only while a mod is enabled
-			local now = os.clock()
-			-- filtergc is expensive: only rescan when we have nothing cached,
-			-- otherwise let the cached def/state tables do the work.
-			if now - lastFind > 5 and (#defs == 0 or #states == 0) then
-				lastFind = now; pcall(refind)
-			end
+			if active then
+				-- re-scan for new def/state tables only while a mod is enabled
+				local now = os.clock()
+				-- right after an equip the game builds the gun's def/state tables
+				-- lazily; rescan for ~2s so the mods land the moment the gun shows up
+				if now - mEquipAt < 2 and now - lastFind > 0.4 then
+					lastFind = now; pcall(refind)
+				-- filtergc is expensive: otherwise only rescan when we have nothing cached
+				elseif now - lastFind > 5 and (#defs == 0 or #states == 0) then
+					lastFind = now; pcall(refind)
+				end
 
 			-- weapon defs (stats)
 			for _, def in ipairs(defs) do
@@ -6174,20 +6147,17 @@ local combatTab = window:tab({ name = "Combat" })
 do
 	local column = combatTab:column()
 	local sa = column:section({ name = "Silent Aim" })
+	-- Ragebot visual-sync hook: the module calls OVX.ragebotSetVisual(true/false)
+	-- whenever its flag changes (toggle, config load, console). One toggle only —
+	-- the old duplicate quick toggle is gone.
 	local ragebotMainToggle = nil
-	local function setRageToggleVisual(toggle, value)
-		if not toggle then return end
+	OVX.ragebotSetVisual = function(value)
+		if not ragebotMainToggle then return end
 		local desired = value == true
-		toggle.state = desired
-		if toggle.flag then flags[toggle.flag] = desired end
-		pcall(toggle.Update, toggle)
-	end
-	local ragebotQuickToggle = sa:toggle({ name = "Ragebot (ON / OFF)", flag = "rb_enabled_quick", default = false, tooltip = "Turn Ragebot on from the first Combat page; all Silent Aim toggles are locked ON while active", callback = function(v)
-		if OVX.ragebotApply then pcall(OVX.ragebotApply, v) end
-	end })
-	OVX.ragebotQuickSync = function(value)
-		setRageToggleVisual(ragebotQuickToggle, value)
-		setRageToggleVisual(ragebotMainToggle, value)
+		if ragebotMainToggle.state == desired and ragebotMainToggle.flag and flags[ragebotMainToggle.flag] == desired then return end
+		ragebotMainToggle.state = desired
+		if ragebotMainToggle.flag then flags[ragebotMainToggle.flag] = desired end
+		pcall(ragebotMainToggle.Update, ragebotMainToggle)
 	end
 	sa:toggle({ name = "Enabled", flag = "sa_enabled", default = true })
 		:keybind({ name = "Silent Aim", flag = "sa_bind", callback = function(v)
@@ -6204,7 +6174,7 @@ do
 	sa:slider({ name = "FOV Radius", min = 20, max = 500, default = 120, interval = 1, flag = "sa_fov" })
 	sa:slider({ name = "Max Distance", min = 0, max = 5000, default = 0, interval = 10, suffix = "m", flag = "sa_max_dist" })
 	sa:slider({ name = "Scan Rate", min = 4, max = 30, default = 12, interval = 1, suffix = " Hz", flag = "sa_scan_hz", tooltip = "Lower Hz = less CPU; 12 Hz replaces the old every-other-frame Workspace:GetDescendants() scan" })
-	sa:toggle({ name = "Force Head", flag = "sa_force_head", default = false, tooltip = "Ragebot forces Head regardless; leave off to use the Aim Bone dropdown" })
+	sa:toggle({ name = "Force Head", flag = "sa_force_head", default = false, tooltip = "Always aim at heads regardless of the Aim Bone dropdown" })
 	sa:toggle({ name = "Instant Hit", flag = "sa_instant_hit", default = true, tooltip = "Send the rewritten shot's hit claim immediately" })
 	sa:toggle({ name = "Remote Jack", flag = "sa_remote_jack", default = true, tooltip = "Use multi-method Fire/Hit/Damage remote buckets" })
 	sa:button({ name = "Re-scan Remotes", callback = function()
@@ -6252,14 +6222,14 @@ do
 
 	local column3 = combatTab:column()
 	local rage = column3:section({ name = "Ragebot" })
-	ragebotMainToggle = rage:toggle({ name = "Ragebot", flag = "rb_enabled", tooltip = "Locks all Silent Aim toggles ON, forces Head, and uses INF acquisition", callback = function(v)
+	ragebotMainToggle = rage:toggle({ name = "Ragebot (ON / OFF)", flag = "rb_enabled", tooltip = "Standalone switch: head-only, INF acquisition through the built-in PSilent path. Completely independent of Silent Aim / Gun Mods — never forces or restores any toggles", callback = function(v)
 		if OVX.ragebotApply then pcall(OVX.ragebotApply, v) end
 	end })
 	rage:slider({ name = "Hit Distance", min = 0, max = 5000, default = 0, interval = 10, suffix = "m", flag = "rb_max_dist", tooltip = "0 = unlimited; otherwise the maximum Ragebot acquisition distance" })
-	rage:label("FOV: INF • ALL HEADS • SA + Gun Mods + Triggerbot locked ON")
-	rage:label("Max Rapid Fire 1200 RPM • pure embedded PSilent rewrite")
-	rage:button({ name = "Re-apply Ragebot State", callback = function()
-		if flags["rb_enabled"] and OVX.ragebotSync then pcall(OVX.ragebotSync) end
+	rage:label("HEADS ONLY • INF FOV • independent switch")
+	rage:label("Aims & redirects shots on its own — your SA setup stays yours")
+	rage:button({ name = "Sync Ragebot Toggle", callback = function()
+		if OVX.ragebotSync then pcall(OVX.ragebotSync) end
 	end })
 end
 
@@ -6361,7 +6331,7 @@ do
 	local column4 = visualsTab:column()
 	local hands = column4:section({ name = "Hand Chams" })
 	hands:toggle({ name = "Hand Chams", flag = "sf_hands_enabled" })
-	hands:dropdown({ name = "Hand Material", flag = "sf_hand_material", items = OVX.sciFiMaterials, default = "ForceField" })
+	hands:dropdown({ name = "Hand Material", flag = "sf_hand_material", items = OVX.sciFiMaterials, default = "ForceField", scrollable = true, vis = 10 })
 	hands:toggle({ name = "Use Hand Preset", flag = "sf_hand_use_preset", default = true })
 	hands:dropdown({ name = "Hand Preset", flag = "sf_hand_preset", items = OVX.sciFiPresetNames, default = "Cyan" })
 	hands:colorpicker({ name = "Hand Custom Color", flag = "sf_hand_color", color = c3(0,255,255) })
@@ -6370,7 +6340,7 @@ do
 
 	local guns = column4:section({ name = "Gun Chams" })
 	guns:toggle({ name = "Gun Chams", flag = "sf_gun_enabled" })
-	guns:dropdown({ name = "Gun Material", flag = "sf_gun_material", items = OVX.sciFiMaterials, default = "ForceField" })
+	guns:dropdown({ name = "Gun Material", flag = "sf_gun_material", items = OVX.sciFiMaterials, default = "ForceField", scrollable = true, vis = 10 })
 	guns:toggle({ name = "Use Gun Preset", flag = "sf_gun_use_preset", default = true })
 	guns:dropdown({ name = "Gun Preset", flag = "sf_gun_preset", items = OVX.sciFiPresetNames, default = "Cyan" })
 	guns:colorpicker({ name = "Gun Custom Color", flag = "sf_gun_color", color = c3(0,255,255) })
@@ -6387,14 +6357,14 @@ do
 	skin:toggle({ name = "Skin Changer", flag = "skin_enabled", default = true })
 	skin:dropdown({ name = "Apply Scope", flag = "skin_apply_mode", items = { "Selected Gun", "All Guns" }, default = "Selected Gun" })
 	local skinWeaponDropdown = skin:dropdown({
-		name = "Weapon", flag = "skin_weapon", items = OVX.skinGetWeapons(), default = "Assault Rifle",
+		name = "Weapon", flag = "skin_weapon", items = OVX.skinGetWeapons(), default = "Assault Rifle", scrollable = true, vis = 10,
 		callback = function()
 			local fn = library.config_flags["skin_weapon_custom"]
 			if fn then pcall(fn, "") else flags["skin_weapon_custom"] = "" end
 		end,
 	})
 	local skinSkinDropdown = skin:dropdown({
-		name = "Skin", flag = "skin_skin", items = OVX.skinGetSkins(), default = "Tempered",
+		name = "Skin", flag = "skin_skin", items = OVX.skinGetSkins(), default = "Tempered", scrollable = true, vis = 10,
 		callback = function()
 			local fn = library.config_flags["skin_skin_custom"]
 			if fn then pcall(fn, "") else flags["skin_skin_custom"] = "" end
@@ -6695,7 +6665,7 @@ do
 	configs:textbox({ name = "Config Name", flag = "cfg_name", default = "Default", callback = function(value)
 		if flags["cfg_auto_load"] == true then saveAuto(true, value) end
 	end })
-	cfgDropdown = configs:dropdown({ name = "Saved Configs", flag = "cfg_selected", items = listConfigs(), default = "Default" })
+	cfgDropdown = configs:dropdown({ name = "Saved Configs", flag = "cfg_selected", items = listConfigs(), default = "Default", scrollable = true, vis = 10 })
 	configs:button({ name = "Save Config", callback = function()
 		if saveConfig(flags["cfg_name"] or "Default") then
 			pcall(function() cfgDropdown:Refresh(listConfigs()); cfgDropdown:Update() end)
@@ -6749,7 +6719,7 @@ do
 		library:update_theme("outline2", toColor3(value) or compatTheme.outline2)
 	end })
 	interface:label("Drag the purple grip at the bottom-right to resize.")
-	interface:label("Mouse wheel over the menu cycles long-tab sections.")
+	interface:label("Mouse wheel over the menu scrolls long tabs continuously.")
 
 	local col3 = settingsTab:column()
 	local essentials = col3:section({ name = "UI Essentials" })
